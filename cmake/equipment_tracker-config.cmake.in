@@ -1,0 +1,4 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/equipment_tracker-targets.cmake")
+check_required_components(equipment_tracker)
