@@ -19,14 +19,17 @@ Key features include:
 
 ## Prerequisites
 
-- C++17 compatible compiler (GCC 8+, Clang 6+, MSVC 2019+)
-- CMake 3.14 or higher
-- Visual Studio 2019/2022 (for Windows) or other IDE/editor of choice
+- [Clang](https://releases.llvm.org/download.html)
+- [CMake](https://cmake.org/download/)
+- [Ninja](https://github.com/ninja-build/ninja/releases)
 
-## Dependencies
+## Cross-Platform Support
 
-- NMEAParser library (included as Git submodule) for GPS data parsing
-- GoogleTest (automatically downloaded by CMake) for unit tests
+Equipment Tracker is designed to be fully cross-platform compatible, supporting:
+
+- Windows with Clang
+- Linux (including Alpine-based containers)
+- No Visual Studio dependency required
 
 ## Building the Project
 
@@ -35,23 +38,37 @@ Key features include:
 ```bash
 git clone https://github.com/your-username/equipment-tracker.git
 cd equipment-tracker
-git submodule update --init --recursive
 ```
 
-### Building with CMake
+### Quick Build (Windows)
+
+The easiest way to build on Windows is using the provided build script:
+
+```bash
+./build.bat
+```
+
+### Manual Build with CMake
 
 ```bash
 mkdir build
 cd build
-cmake ..
+cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build .
 ```
 
-### Building with Visual Studio
+### Running with Docker
 
-1. Open the project folder in Visual Studio with "Open Folder"
-2. Visual Studio should detect the CMake configuration
-3. Select "Build All" from the Build menu
+The project includes Docker support for building and running in a container:
+
+```bash
+# Build and run with Docker Compose
+docker compose up
+
+# Or manually build and run
+docker build -t equipment-tracker .
+docker run equipment-tracker
+```
 
 ## Running the Application
 
@@ -59,27 +76,17 @@ After successful build:
 
 ```bash
 # Run the main application
-./bin/equipment_tracker_app
+./build/equipment_tracker_app
 
-# Run the examples
-./bin/examples/basic_tracking
-./bin/examples/geofencing
-./bin/examples/realtime_monitoring
+# Alternative location depending on build configuration
+./build/bin/equipment_tracker_app
 ```
 
-## Running the Tests
+## Development Notes
 
-```bash
-cd build
-ctest
-```
-
-Or run individual tests:
-
-```bash
-./bin/test_position
-./bin/test_equipment
-```
+- The codebase uses platform-independent constructs wherever possible
+- Platform-specific code is isolated using preprocessor macros
+- All code follows modern C++17 practices
 
 ## License
 
