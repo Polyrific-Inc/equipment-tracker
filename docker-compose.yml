@@ -1,0 +1,8 @@
+services:
+  equipment-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: equipment-tracker
+    volumes:
+      - ./data:/app/data

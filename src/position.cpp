@@ -55,7 +55,7 @@ namespace equipment_tracker
         auto time_t = std::chrono::system_clock::to_time_t(timestamp_);
 
         // Use safer localtime_s for Windows
-#ifdef _MSC_VER
+#ifdef _WIN32
         std::tm tm_buf;
         localtime_s(&tm_buf, &time_t);
         std::tm &tm = tm_buf;

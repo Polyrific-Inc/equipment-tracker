@@ -203,7 +203,7 @@ namespace equipment_tracker
                 equipment.recordPosition(pos);
             }
 
-            return equipment;
+            return std::optional<Equipment>(std::move(equipment));
         }
         catch (const std::exception &e)
         {

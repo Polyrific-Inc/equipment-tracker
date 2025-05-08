@@ -1,3 +1,4 @@
+#include <iomanip>
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -195,7 +196,13 @@ namespace equipment_tracker
             // Create JSON-like payload (in a real implementation, would use a JSON library)
             std::stringstream ss;
             auto time_t = std::chrono::system_clock::to_time_t(position.getTimestamp());
-            std::tm tm = *std::gmtime(&time_t);
+            std::tm tm;
+#ifdef _WIN32
+            gmtime_s(&tm, &time_t);
+#else
+            // For non-Windows platforms
+            gmtime_r(&time_t, &tm);
+#endif
 
             ss << "{"
                << "\"id\":\"" << id << "\","

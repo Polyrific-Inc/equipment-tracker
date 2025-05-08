@@ -16,7 +16,13 @@ namespace equipment_tracker
     {
         auto time_t = std::chrono::system_clock::to_time_t(timestamp);
         std::tm tm = {};
+#ifdef _WIN32
+        // Windows-specific code
         localtime_s(&tm, &time_t);
+#else
+        // Linux/Unix/macOS code
+        localtime_r(&time_t, &tm);
+#endif
 
         std::stringstream ss;
         ss << std::put_time(&tm, format.c_str());

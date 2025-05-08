@@ -15,6 +15,46 @@ namespace equipment_tracker
     {
     }
 
+    Equipment::Equipment(Equipment &&other) noexcept
+        : id_(std::move(other.id_)),
+          type_(other.type_),
+          name_(std::move(other.name_)),
+          status_(other.status_)
+    {
+        // Lock the other object's mutex during move
+        std::lock_guard<std::mutex> lock(other.mutex_);
+
+        // Move the position data
+        last_position_ = std::move(other.last_position_);
+        position_history_ = std::move(other.position_history_);
+        max_history_size_ = other.max_history_size_;
+
+        // Reset the moved-from object
+        other.status_ = EquipmentStatus::Unknown;
+    }
+
+    Equipment &Equipment::operator=(Equipment &&other) noexcept
+    {
+        if (this != &other)
+        {
+            // Lock both mutexes (be careful about order to prevent deadlock)
+            std::scoped_lock lock(mutex_, other.mutex_);
+
+            // Move all data members
+            id_ = std::move(other.id_);
+            type_ = other.type_;
+            name_ = std::move(other.name_);
+            status_ = other.status_;
+            last_position_ = std::move(other.last_position_);
+            position_history_ = std::move(other.position_history_);
+            max_history_size_ = other.max_history_size_;
+
+            // Reset the moved-from object
+            other.status_ = EquipmentStatus::Unknown;
+        }
+        return *this;
+    }
+
     std::optional<Position> Equipment::getLastPosition() const
     {
         std::lock_guard<std::mutex> lock(mutex_);

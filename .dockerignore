@@ -1,0 +1,10 @@
+build/
+.git/
+.vscode/
+.dockerignore
+.gitignore
+build.bat
+coding-standard.md
+docker-compose.yml
+Dockerfile
+README.md
