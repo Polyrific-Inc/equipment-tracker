@@ -197,4 +197,19 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    // Invalid function that will cause compilation errors
+    void Equipment::calculateInvalidMetrics() {
+        int x = 10  // Missing semicolon
+        double y = 20.5  // Missing semicolon
+        
+        if (x > y) {  // Missing closing brace
+            std::cout << "x is greater"
+        
+        for (int i = 0 i < 10 i++) {  // Missing semicolons in for loop
+            x += i
+        }
+        
+        return  // Missing semicolon and incorrect return type
+    }
+
 } // namespace equipment_tracker
