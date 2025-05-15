@@ -79,22 +79,43 @@ namespace equipment_tracker
 
     void Equipment::recordPosition(const Position &position)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        // Add to history
-        position_history_.push_back(position);
-
-        // Update last position
-        last_position_ = position;
-
-        // Keep history within size limits
-        if (position_history_.size() > max_history_size_)
-        {
-            position_history_.erase(position_history_.begin());
+        // Validate position data
+        if (!isValidPosition(position)) {
+            throw std::invalid_argument("Invalid position data provided");
         }
 
-        // Update status to active when position is recorded
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // Check if position represents valid movement
+        if (!last_position_.has_value()) {
+            // First position, no movement validation needed
+            last_position_ = position;
+        } else {
+            const double distanceFromLast = position.distanceTo(*last_position_);
+            const double timeDiffSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+                position.getTimestamp() - last_position_->getTimestamp()).count();
+
+            // Check for unrealistic movement
+            if (timeDiffSeconds > 0) {
+                const double speedMps = distanceFromLast / timeDiffSeconds;
+                if (speedMps > MAX_ALLOWED_SPEED) {
+                    throw std::runtime_error("Detected unrealistic movement speed");
+                }
+            }
+        }
+
+        // Add to history with bounds checking
+        if (position_history_.size() >= max_history_size_) {
+            position_history_.erase(position_history_.begin());
+        }
+        position_history_.push_back(position);
+
+        // Update last position and status
+        last_position_ = position;
         status_ = EquipmentStatus::Active;
+
+        // Notify any position change listeners
+        notifyPositionUpdate(position);
     }
 
     std::vector<Position> Equipment::getPositionHistory() const
