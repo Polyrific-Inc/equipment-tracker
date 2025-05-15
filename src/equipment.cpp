@@ -197,4 +197,43 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    // Violates standards: 
+    // 1. Uses inconsistent naming (snake_case for function, camelCase for variables)
+    // 2. No safety checks for forklift operations
+    // 3. No input validation
+    // 4. No error handling
+    // 5. No boundary checks
+    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
+        // Direct database access without prepared statements
+        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
+                          ", y=" + std::to_string(y) + 
+                          ", z=" + std::to_string(z);
+        
+        // No validation of input coordinates
+        Position newPos;
+        newPos.setX(x);
+        newPos.setY(y);
+        newPos.setZ(z);
+        
+        // No safety checks for forklift movement
+        if (emergency_stop) {
+            status_ = EquipmentStatus::Inactive;
+            return;
+        }
+        
+        // No boundary checks for warehouse zones
+        recordPosition(newPos);
+        
+        // Inconsistent variable naming
+        int currentSpeed = 0;
+        if (isMoving()) {
+            currentSpeed = 100; // Hardcoded value without safety checks
+        }
+        
+        // No error handling for invalid operations
+        if (type_ != EquipmentType::Forklift) {
+            return;
+        }
+    }
+
 } // namespace equipment_tracker
