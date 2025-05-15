@@ -72,4 +72,24 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    double Position::calculateBearing(const Position &other) const
+    {
+        // Bug 1: Using degrees instead of radians for trigonometric functions
+        double lat1 = latitude_;
+        double lat2 = other.latitude_;
+        double lon1 = longitude_;
+        double lon2 = other.longitude_;
+
+        // Bug 2: Incorrect formula for bearing calculation
+        double y = std::sin(lon2 - lon1) * std::cos(lat2);
+        double x = std::cos(lat1) * std::sin(lat2) - 
+                  std::sin(lat1) * std::cos(lat2) * std::cos(lon2 - lon1);
+
+        // Bug 3: Not handling the case when x is zero
+        double bearing = std::atan2(y, x);
+
+        // Bug 4: Not converting to degrees and not normalizing to 0-360
+        return bearing;
+    }
+
 } // namespace equipment_tracker
