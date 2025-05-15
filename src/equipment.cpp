@@ -197,4 +197,50 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    double Equipment::calculateAverageSpeed() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // Need at least 2 positions to calculate average speed
+        if (position_history_.size() < 2)
+        {
+            return 0.0;
+        }
+
+        double totalDistance = 0.0;
+        double totalTime = 0.0;
+
+        // Calculate total distance and time between consecutive positions
+        for (size_t i = 1; i < position_history_.size(); ++i)
+        {
+            const auto& currentPos = position_history_[i];
+            const auto& previousPos = position_history_[i - 1];
+
+            // Calculate time difference in seconds
+            auto timeDiff = std::chrono::duration_cast<std::chrono::seconds>(
+                currentPos.getTimestamp() - previousPos.getTimestamp()).count();
+
+            // Skip if time difference is too small
+            if (timeDiff < 1)
+            {
+                continue;
+            }
+
+            // Calculate distance between positions
+            double distance = currentPos.distanceTo(previousPos);
+            
+            totalDistance += distance;
+            totalTime += timeDiff;
+        }
+
+        // Avoid division by zero
+        if (totalTime == 0.0)
+        {
+            return 0.0;
+        }
+
+        // Return average speed in meters per second
+        return totalDistance / totalTime;
+    }
+
 } // namespace equipment_tracker
