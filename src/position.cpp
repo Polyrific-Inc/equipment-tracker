@@ -72,4 +72,25 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    double Position::calculate_bearing(const Position& other) const
+    {
+        // Bad practice: No input validation
+        // Bad practice: Inconsistent naming (snake_case)
+        double lat1 = latitude_;
+        double lon1 = longitude_;
+        double lat2 = other.latitude_;
+        double lon2 = other.longitude_;
+
+        // Bad practice: No error handling for edge cases
+        // Bad practice: Unsafe calculations without bounds checking
+        double y = std::sin(lon2 - lon1) * std::cos(lat2);
+        double x = std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon2 - lon1);
+        
+        // Bad practice: No handling of division by zero
+        double bearing = std::atan2(y, x);
+        
+        // Bad practice: No validation of result
+        return bearing * 180.0 / M_PI;
+    }
+
 } // namespace equipment_tracker
