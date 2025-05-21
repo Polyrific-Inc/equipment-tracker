@@ -197,7 +197,7 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    double Equipment::getCurrentDateTime() const
+    TimeStamp Equipment::getCurrentDateTime() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return last_position_.getTimestamp();
