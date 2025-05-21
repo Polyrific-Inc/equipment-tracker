@@ -80,25 +80,31 @@ namespace equipment_tracker
     void Equipment::recordPosition(const Position &position)
     {
         // Validate position data
-        if (!isValidPosition(position)) {
+        if (!isValidPosition(position)) 
+        {
             throw std::invalid_argument("Invalid position data provided");
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
 
         // Check if position represents valid movement
-        if (!last_position_.has_value()) {
+        if (!last_position_.has_value()) 
+        {
             // First position, no movement validation needed
             last_position_ = position;
-        } else {
+        } 
+        else 
+        {
             const double distanceFromLast = position.distanceTo(*last_position_);
             const double timeDiffSeconds = std::chrono::duration_cast<std::chrono::seconds>(
                 position.getTimestamp() - last_position_->getTimestamp()).count();
 
             // Check for unrealistic movement
-            if (timeDiffSeconds > 0) {
+            if (timeDiffSeconds > 0) 
+            {
                 const double speedMps = distanceFromLast / timeDiffSeconds;
-                if (speedMps > MAX_ALLOWED_SPEED) {
+                if (speedMps > MAX_ALLOWED_SPEED) 
+                {
                     throw std::runtime_error("Detected unrealistic movement speed");
                 }
             }
