@@ -197,4 +197,23 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    std::optional<TimeStamp> Equipment::getCurrentDateTime() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        try {
+            auto now = std::chrono::system_clock::now();
+            auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()).count();
+            return TimeStamp{timestamp};
+        } catch (const std::overflow_error& e) {
+            // Log specific overflow errors during time conversion
+            std::cerr << "Overflow error in getCurrentDateTime: " << e.what() << std::endl;
+            return std::nullopt;
+        } catch (const std::exception& e) {
+            // Log any other unexpected exceptions for debugging
+            std::cerr << "Unexpected error in getCurrentDateTime: " << e.what() << std::endl; 
+            return std::nullopt;
+        }
+    }
+
 } // namespace equipment_tracker
