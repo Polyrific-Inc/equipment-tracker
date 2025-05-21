@@ -197,17 +197,36 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    void Equipment::printHelloWorld() const
+    double Equipment::getCurrentSpeed() const
     {
-        // Using stringstream for thread-safety and better performance
-        std::stringstream ss;
-        ss << "Hello World from Equipment " << name_ << "!\n";
-        std::string output = ss.str();
-        
-        // Use a mutex to ensure thread-safe output
         std::lock_guard<std::mutex> lock(mutex_);
-        std::fprintf(stdout, "%s", output.c_str());
-        std::fflush(stdout);
+
+        // Need at least 2 positions to calculate speed
+        if (position_history_.size() < 2)
+        {
+            return 0.0;
+        }
+
+        // Get last two positions
+        const auto &latest = position_history_.back();
+        const auto &previous = position_history_[position_history_.size() - 2];
+
+        // Calculate time difference in seconds
+        auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
+                             latest.getTimestamp() - previous.getTimestamp())
+                             .count();
+
+        // If time difference is too small, avoid division by zero
+        if (time_diff < 1)
+        {
+            return 0.0;
+        }
+
+        // Calculate distance between positions
+        double distance = latest.distanceTo(previous);
+
+        // Return speed in meters per second
+        return distance / time_diff;
     }
 
 } // namespace equipment_tracker
