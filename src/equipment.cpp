@@ -201,16 +201,25 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        // Need at least 2 positions to calculate speed
-        if (position_history_.size() < 2)
-        {
-            return 0.0;
-        }
-
         try {
+            // Need at least 2 positions to calculate speed
+            if (position_history_.size() < 2)
+            {
+                return 0.0;
+            }
+
+            // Get size once while holding lock
+            size_t history_size = position_history_.size();
+
             // Make local copies of the positions we need while still holding the lock
+            // Check size again in case another thread modified between first check and here
+            if (history_size < 2 || history_size != position_history_.size()) {
+                spdlog::warn("Position history size changed unexpectedly during speed calculation");
+                return 0.0;
+            }
+
             Position latest = position_history_.back();
-            Position previous = position_history_[position_history_.size() - 2];
+            Position previous = position_history_[history_size - 2];
 
             // Validate timestamps
             auto latest_ts = latest.getTimestamp();
@@ -218,13 +227,13 @@ namespace equipment_tracker
 
             if (latest_ts.time_since_epoch().count() == 0 || 
                 previous_ts.time_since_epoch().count() == 0) {
-                // Invalid timestamp detected
+                spdlog::warn("Invalid timestamp detected in position history");
                 return 0.0;
             }
 
             // Ensure timestamps are in correct order
             if (latest_ts < previous_ts) {
-                // History corruption detected - timestamps out of order
+                spdlog::error("Position history corruption detected - timestamps out of order");
                 return 0.0;
             }
 
@@ -235,26 +244,28 @@ namespace equipment_tracker
 
             // Check for reasonable time difference (e.g., not too large)
             if (time_diff <= 0 || time_diff > 3600) { // Max 1 hour between readings
+                spdlog::warn("Invalid time difference between positions: {} seconds", time_diff);
                 return 0.0;
             }
 
             // Calculate distance and check for reasonable values
             double distance = latest.distanceTo(previous);
             if (!std::isfinite(distance) || distance < 0.0) {
+                spdlog::error("Invalid distance calculation result: {}", distance);
                 return 0.0;
             }
 
             // Calculate speed and check result
             double speed = distance / time_diff;
             if (!std::isfinite(speed) || speed < 0.0) {
+                spdlog::error("Invalid speed calculation result: {}", speed);
                 return 0.0;
             }
 
-            // Return the calculated speed - lock is released here
             return speed;
 
-        } catch (const std::exception&) {
-            // Handle any unexpected errors during calculations
+        } catch (const std::exception& e) {
+            spdlog::error("Exception during speed calculation: {}", e.what());
             return 0.0;
         }
     }
