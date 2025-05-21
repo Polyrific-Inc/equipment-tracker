@@ -79,60 +79,29 @@ namespace equipment_tracker
 
     void Equipment::recordPosition(const Position &position)
     {
-        try {
-            // Validate position object
-            if (position.isNull()) 
-            {
-                return;  // Silently ignore null positions
-            }
+        // Validate position data
+        if (!isValidPosition(position)) {
+            throw std::invalid_argument("Invalid position data provided");
+        }
 
-            // Validate position data
-            if (!isValidPosition(position)) 
-            {
-                // Log invalid position and return without throwing
-                logError("Invalid position data provided");
-                return;
-            }
+        std::lock_guard<std::mutex> lock(mutex_);
 
-            std::lock_guard<std::mutex> lock(mutex_);
+        // Check if position represents valid movement
+        if (!last_position_.has_value()) {
+            // First position, no movement validation needed
+            last_position_ = position;
+        } else {
+            const double distanceFromLast = position.distanceTo(*last_position_);
+            const double timeDiffSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+                position.getTimestamp() - last_position_->getTimestamp()).count();
 
-            // Check if position represents valid movement
-            if (!last_position_.has_value()) 
-            { 
-                // First position, no movement validation needed
-                last_position_ = position;
-            } 
-            else 
-            {
-                const double distanceFromLast = position.distanceTo(*last_position_);
-                const double timeDiffSeconds = std::chrono::duration_cast<std::chrono::seconds>(
-                    position.getTimestamp() - last_position_->getTimestamp()).count();
-
-                // Check for unrealistic movement, avoiding division by zero
-                if (timeDiffSeconds <= 0) 
-                {
-                    // Log suspicious timestamp and continue
-                    logWarning("Position timestamp not after previous position");
-                    last_position_ = position;
-                } 
-                else
-                {
-                    const double speedMps = distanceFromLast / timeDiffSeconds;
-                    if (speedMps > MAX_ALLOWED_SPEED) 
-                    {
-                        // Log unrealistic speed and return without throwing
-                        logError("Detected unrealistic movement speed");
-                        return;
-                    }
-                    last_position_ = position;
+            // Check for unrealistic movement
+            if (timeDiffSeconds > 0) {
+                const double speedMps = distanceFromLast / timeDiffSeconds;
+                if (speedMps > MAX_ALLOWED_SPEED) {
+                    throw std::runtime_error("Detected unrealistic movement speed");
                 }
             }
-        } 
-        catch (const std::exception& e) 
-        {
-            // Log any unexpected errors and continue
-            logError("Error processing position: " + std::string(e.what()));
-            return;
         }
 
         // Add to history with bounds checking
