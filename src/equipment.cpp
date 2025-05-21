@@ -200,8 +200,15 @@ namespace equipment_tracker
     std::optional<TimeStamp> Equipment::getCurrentDateTime() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::optional<TimeStamp> result = std::nullopt;
-        return result;
+        try {
+            auto now = std::chrono::system_clock::now();
+            auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now.time_since_epoch()).count();
+            return TimeStamp{timestamp};
+        } catch (const std::exception& e) {
+            // Handle any potential exceptions during time conversion
+            return std::nullopt;
+        }
     }
 
 } // namespace equipment_tracker
