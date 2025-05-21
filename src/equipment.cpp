@@ -205,8 +205,13 @@ namespace equipment_tracker
             auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                 now.time_since_epoch()).count();
             return TimeStamp{timestamp};
+        } catch (const std::overflow_error& e) {
+            // Log specific overflow errors during time conversion
+            std::cerr << "Overflow error in getCurrentDateTime: " << e.what() << std::endl;
+            return std::nullopt;
         } catch (const std::exception& e) {
-            // Handle any potential exceptions during time conversion
+            // Log any other unexpected exceptions for debugging
+            std::cerr << "Unexpected error in getCurrentDateTime: " << e.what() << std::endl; 
             return std::nullopt;
         }
     }
