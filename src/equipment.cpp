@@ -197,4 +197,9 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    void Equipment::printHelloWorld() const
+    {
+        std::cout << "Hello World from Equipment " << name_ << "!" << std::endl;
+    }
+
 } // namespace equipment_tracker
