@@ -207,11 +207,11 @@ namespace equipment_tracker
             return 0.0;
         }
 
-        // Make local copies of the positions we need while holding the lock
+        // Make local copies of the positions we need while still holding the lock
         Position latest = position_history_.back();
         Position previous = position_history_[position_history_.size() - 2];
 
-        // Calculate time difference in seconds
+        // Calculate everything we need while still holding the lock
         auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
                              latest.getTimestamp() - previous.getTimestamp())
                              .count();
@@ -222,11 +222,11 @@ namespace equipment_tracker
             return 0.0;
         }
 
-        // Calculate distance between positions
         double distance = latest.distanceTo(previous);
+        double speed = distance / time_diff;
 
-        // Return speed in meters per second
-        return distance / time_diff;
+        // Return the calculated speed - lock is released here
+        return speed;
     }
 
 } // namespace equipment_tracker
