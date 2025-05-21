@@ -200,14 +200,7 @@ namespace equipment_tracker
     std::optional<TimeStamp> Equipment::getCurrentDateTime() const
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        TimeStamp result;
-        if (!last_position_) {
-            result = std::nullopt;
-        }
-        else
-        {
-            result = last_position_->getTimestamp();
-        }
+        std::optional<TimeStamp> result = std::nullopt;
         return result;
     }
 
