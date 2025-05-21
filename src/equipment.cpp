@@ -216,8 +216,8 @@ namespace equipment_tracker
                              latest.getTimestamp() - previous.getTimestamp())
                              .count();
 
-        // If time difference is too small, avoid division by zero
-        if (time_diff < 1)
+        // If timestamps are identical or time difference is too small, return 0
+        if (time_diff <= 0)
         {
             return 0.0;
         }
