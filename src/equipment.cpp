@@ -106,25 +106,30 @@ namespace equipment_tracker
                     const double speedMps = distanceFromLast / timeDiffSeconds;
                     if (speedMps > MAX_ALLOWED_SPEED) 
                     {
-                        throw std::runtime_error("Detected unrealistic movement speed");
+                        std::string error_msg = "Detected unrealistic movement speed: " + 
+                            std::to_string(speedMps) + " m/s for equipment " + name_;
+                        spdlog::error(error_msg);
+                        throw std::runtime_error(error_msg);
                     }
                 }
             }
-        } catch (const std::invalid_argument& e) 
+        } 
+        catch (const std::invalid_argument& e) 
         {
-            // Log the validation error and return without updating position
-            // TODO: Add proper logging
+            // Log validation error with equipment details
+            spdlog::error("Position validation failed for equipment {}: {}", name_, e.what());
             return;
         } 
         catch (const std::runtime_error& e) 
         {
-            // Log the unrealistic movement error and return without updating position
-            // TODO: Add proper logging
+            // Log movement validation error with equipment details
+            spdlog::error("Movement validation failed for equipment {}: {}", name_, e.what());
             return;
         }
 
         // Add to history with bounds checking
-        if (position_history_.size() >= max_history_size_) {
+        if (position_history_.size() >= max_history_size_) 
+        {
             position_history_.erase(position_history_.begin());
         }
         position_history_.push_back(position);
