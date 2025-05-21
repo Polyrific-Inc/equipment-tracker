@@ -199,7 +199,15 @@ namespace equipment_tracker
 
     void Equipment::printHelloWorld() const
     {
-        std::cout << "Hello World from Equipment " << name_ << "!" << std::endl;
+        // Using stringstream for thread-safety and better performance
+        std::stringstream ss;
+        ss << "Hello World from Equipment " << name_ << "!\n";
+        std::string output = ss.str();
+        
+        // Use a mutex to ensure thread-safe output
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::fprintf(stdout, "%s", output.c_str());
+        std::fflush(stdout);
     }
 
 } // namespace equipment_tracker
