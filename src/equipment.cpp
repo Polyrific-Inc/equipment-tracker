@@ -207,26 +207,56 @@ namespace equipment_tracker
             return 0.0;
         }
 
-        // Make local copies of the positions we need while still holding the lock
-        Position latest = position_history_.back();
-        Position previous = position_history_[position_history_.size() - 2];
+        try {
+            // Make local copies of the positions we need while still holding the lock
+            Position latest = position_history_.back();
+            Position previous = position_history_[position_history_.size() - 2];
 
-        // Calculate everything we need while still holding the lock
-        auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
-                             latest.getTimestamp() - previous.getTimestamp())
-                             .count();
+            // Validate timestamps
+            auto latest_ts = latest.getTimestamp();
+            auto previous_ts = previous.getTimestamp();
 
-        // If timestamps are identical or time difference is too small, return 0
-        if (time_diff <= 0)
-        {
+            if (latest_ts.time_since_epoch().count() == 0 || 
+                previous_ts.time_since_epoch().count() == 0) {
+                // Invalid timestamp detected
+                return 0.0;
+            }
+
+            // Ensure timestamps are in correct order
+            if (latest_ts < previous_ts) {
+                // History corruption detected - timestamps out of order
+                return 0.0;
+            }
+
+            // Calculate time difference
+            auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
+                                 latest_ts - previous_ts)
+                                 .count();
+
+            // Check for reasonable time difference (e.g., not too large)
+            if (time_diff <= 0 || time_diff > 3600) { // Max 1 hour between readings
+                return 0.0;
+            }
+
+            // Calculate distance and check for reasonable values
+            double distance = latest.distanceTo(previous);
+            if (!std::isfinite(distance) || distance < 0.0) {
+                return 0.0;
+            }
+
+            // Calculate speed and check result
+            double speed = distance / time_diff;
+            if (!std::isfinite(speed) || speed < 0.0) {
+                return 0.0;
+            }
+
+            // Return the calculated speed - lock is released here
+            return speed;
+
+        } catch (const std::exception&) {
+            // Handle any unexpected errors during calculations
             return 0.0;
         }
-
-        double distance = latest.distanceTo(previous);
-        double speed = distance / time_diff;
-
-        // Return the calculated speed - lock is released here
-        return speed;
     }
 
 } // namespace equipment_tracker
