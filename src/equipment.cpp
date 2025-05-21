@@ -207,9 +207,9 @@ namespace equipment_tracker
             return 0.0;
         }
 
-        // Get last two positions
-        const auto &latest = position_history_.back();
-        const auto &previous = position_history_[position_history_.size() - 2];
+        // Make local copies of the positions we need while holding the lock
+        Position latest = position_history_.back();
+        Position previous = position_history_[position_history_.size() - 2];
 
         // Calculate time difference in seconds
         auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
