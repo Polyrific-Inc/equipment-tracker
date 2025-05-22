@@ -1,3 +1,6 @@
+# Include the GoogleTest module for test discovery
+include(GoogleTest)
+
 # Fetch and build Google Test if not found
 include(FetchContent)
 FetchContent_Declare(
@@ -20,31 +23,48 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
-# Add the test executable
-add_executable(position_test ${CMAKE_CURRENT_SOURCE_DIR}/src/position_test.cpp)
+# Option to build individual test executables (default) or a combined test suite
+option(BUILD_INDIVIDUAL_TESTS "Build individual test executables for each test file" ON)
 
-# Link the test executable with GoogleTest and the main library
-target_link_libraries(position_test 
-    PRIVATE 
-    equipment_tracker  # Link to your main library
-    gtest
-    gtest_main  # Provides a default main() function
-    gmock
-)
+# Find all test files in the src directory
+file(GLOB_RECURSE TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp")
 
-# Add pthread on Unix systems
-if(UNIX AND NOT APPLE)
-    target_link_libraries(position_test PRIVATE pthread)
+# Common function to set up test executable
+function(setup_test_executable target_name source_file)
+    add_executable(${target_name} ${source_file})
+    target_link_libraries(${target_name} 
+        PRIVATE 
+        equipment_tracker  # Link to your main library
+        gtest
+        gtest_main
+        gmock
+    )
     
-    # For Alpine Linux: Link with libstdc++ statically if needed
-    if(DEFINED ENV{ALPINE})
-        target_link_libraries(position_test PRIVATE -static-libstdc++)
+    # Add pthread on Unix systems
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(${target_name} PRIVATE pthread)
+        
+        # For Alpine Linux: Link with libstdc++ statically if needed
+        if(DEFINED ENV{ALPINE})
+            target_link_libraries(${target_name} PRIVATE -static-libstdc++)
+        endif()
     endif()
+    
+    # Add test so CTest can run it
+    add_test(NAME ${target_name} COMMAND ${target_name})
+    
+    # Enable test discovery
+    gtest_discover_tests(${target_name})
+endfunction()
+
+if(BUILD_INDIVIDUAL_TESTS)
+    # Build separate executable for each test file
+    foreach(TEST_SOURCE ${TEST_SOURCES})
+        # Extract the filename without extension
+        get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+        setup_test_executable(${TEST_NAME} ${TEST_SOURCE})
+    endforeach()
+else()
+    # Build a single executable with all tests
+    setup_test_executable(all_tests "${TEST_SOURCES}")
 endif()
-
-# Add test so CTest can run it
-add_test(NAME position_test COMMAND position_test)
-
-# Enable test discovery
-include(GoogleTest)
-gtest_discover_tests(position_test)
