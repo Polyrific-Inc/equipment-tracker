@@ -60,9 +60,26 @@ endfunction()
 if(BUILD_INDIVIDUAL_TESTS)
     # Build separate executable for each test file
     foreach(TEST_SOURCE ${TEST_SOURCES})
+        # Get the relative path from the src directory
+        file(RELATIVE_PATH REL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${TEST_SOURCE})
+
+        # Replace directory separators with underscores
+        string(REPLACE "/" "_" PATH_UNDERSCORE ${REL_PATH})
+
         # Extract the filename without extension
         get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
-        setup_test_executable(${TEST_NAME} ${TEST_SOURCE})
+
+        # Create a unique target name including the path
+        if(REL_PATH MATCHES "/")
+            # If in a subdirectory, include directory in name
+            string(REPLACE ".cpp" "" TARGET_NAME ${PATH_UNDERSCORE})
+        else()
+            # If directly in tests dir, just use the filename
+            set(TARGET_NAME ${TEST_NAME})
+        endif()
+
+        # Setup the test with unique name
+        setup_test_executable(${TARGET_NAME} ${TEST_SOURCE})
     endforeach()
 else()
     # Build a single executable with all tests
