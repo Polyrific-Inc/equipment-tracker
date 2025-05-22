@@ -21,30 +21,30 @@ include_directories(
 )
 
 # Add the test executable
-# add_executable(position_test position3_test.cpp)
+add_executable(position_test ${CMAKE_CURRENT_SOURCE_DIR}/src/position_test.cpp)
 
 # Link the test executable with GoogleTest and the main library
-# target_link_libraries(position_test 
-#     PRIVATE 
-#     equipment_tracker  # Link to your main library
-#     gtest
-#     gtest_main  # Provides a default main() function
-#     gmock
-# )
+target_link_libraries(position_test 
+    PRIVATE 
+    equipment_tracker  # Link to your main library
+    gtest
+    gtest_main  # Provides a default main() function
+    gmock
+)
 
 # Add pthread on Unix systems
-# if(UNIX AND NOT APPLE)
-#     target_link_libraries(position_test PRIVATE pthread)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(position_test PRIVATE pthread)
     
-#     # For Alpine Linux: Link with libstdc++ statically if needed
-#     if(DEFINED ENV{ALPINE})
-#         target_link_libraries(position_test PRIVATE -static-libstdc++)
-#     endif()
-# endif()
+    # For Alpine Linux: Link with libstdc++ statically if needed
+    if(DEFINED ENV{ALPINE})
+        target_link_libraries(position_test PRIVATE -static-libstdc++)
+    endif()
+endif()
 
 # Add test so CTest can run it
-# add_test(NAME position_test COMMAND position_test)
+add_test(NAME position_test COMMAND position_test)
 
 # Enable test discovery
 include(GoogleTest)
-# gtest_discover_tests(position_test)
+gtest_discover_tests(position_test)
