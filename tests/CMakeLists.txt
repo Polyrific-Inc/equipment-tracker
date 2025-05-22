@@ -49,12 +49,17 @@ function(setup_test_executable target_name source_file)
             target_link_libraries(${target_name} PRIVATE -static-libstdc++)
         endif()
     endif()
+
+    # Get the full relative path from CMakeLists.txt directory to the source file
+    file(RELATIVE_PATH REL_SOURCE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${source_file})
+
+    # Remove the .cpp extension
+    string(REGEX REPLACE "\\.cpp$" "" REL_PATH_NO_EXT ${REL_SOURCE_PATH})
+
+    # Replace path separators with underscores for the prefix
+    string(REPLACE "/" "_" TEST_PREFIX "${REL_PATH_NO_EXT}.")
     
-    # Add test so CTest can run it
-    add_test(NAME ${target_name} COMMAND ${target_name})
-    
-    # Enable test discovery
-    gtest_discover_tests(${target_name})
+    gtest_discover_tests(${target_name} TEST_PREFIX "${TEST_PREFIX}")
 endfunction()
 
 if(BUILD_INDIVIDUAL_TESTS)
