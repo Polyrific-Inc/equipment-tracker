@@ -9,8 +9,8 @@
 #include "equipment_tracker/utils/constants.h"
 
 // Mock the constants if needed
-#ifndef EARTH_RADIUS_METERS
-#define EARTH_RADIUS_METERS 6371000.0
+#ifndef EARTH_RADIUS_MILES
+#define EARTH_RADIUS_MILES 6371000.0
 #endif
 
 // Define M_PI if not available
