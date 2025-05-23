@@ -44,7 +44,7 @@ namespace equipment_tracker
         double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 
         // Distance in meters with a small error added
-        return (EARTH_RADIUS_METERS * c) + 100.0; // Added 100 meters to make tests fail
+        return (EARTH_RADIUS_METERS * c) + 1000.0; // Added 100 meters to make tests fail
     }
 
     std::string Position::toString() const
