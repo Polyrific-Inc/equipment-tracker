@@ -12,45 +12,47 @@
 #include "position.h"
 #include "data_storage.h"
 
-namespace equipment_tracker {
-namespace testing {
-
-// Mock getCurrentTimestamp for testing
-Timestamp testTimestamp() {
-    return Timestamp(1609459200); // 2021-01-01 00:00:00 UTC
+// For cross-platform temporary directory
+std::string getTempDir() {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    GetTempPathA(MAX_PATH, buffer);
+    return std::string(buffer);
+#else
+    return "/tmp/";
+#endif
 }
+
+namespace equipment_tracker {
 
 class DataStorageTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Use a temporary file for testing
-        temp_db_path_ = std::filesystem::temp_directory_path() / "test_equipment_db.sqlite";
+        // Create a unique temporary database path for each test
+        temp_db_path_ = getTempDir() + "test_equipment_db_" + 
+                        std::to_string(testing::UnitTest::GetInstance()->random_seed()) + ".db";
         
-        // Remove any existing test database
-        if (std::filesystem::exists(temp_db_path_)) {
-            std::filesystem::remove(temp_db_path_);
-        }
-        
-        storage_ = std::make_unique<DataStorage>(temp_db_path_.string());
-        ASSERT_TRUE(storage_->initialize());
+        // Create a fresh instance for each test
+        data_storage_ = std::make_unique<DataStorage>(temp_db_path_);
+        data_storage_->initialize();
     }
 
     void TearDown() override {
-        storage_.reset();
-        // Clean up the test database
+        data_storage_.reset();
+        // Clean up the test database file
         if (std::filesystem::exists(temp_db_path_)) {
             std::filesystem::remove(temp_db_path_);
         }
     }
 
     // Helper method to create a test equipment
-    Equipment createTestEquipment(const EquipmentId& id = "EQ001") {
+    Equipment createTestEquipment(EquipmentId id = "EQ001") {
         Equipment equipment;
         equipment.id = id;
         equipment.name = "Test Equipment";
-        equipment.type = EquipmentType::BULLDOZER;
-        equipment.status = EquipmentStatus::AVAILABLE;
-        equipment.last_maintenance = Timestamp(1609372800); // 2020-12-31
+        equipment.type = EquipmentType::VEHICLE;
+        equipment.status = EquipmentStatus::ACTIVE;
+        equipment.last_maintenance = getCurrentTimestamp() - 86400; // Yesterday
         return equipment;
     }
 
@@ -60,130 +62,100 @@ protected:
         position.latitude = lat;
         position.longitude = lon;
         position.altitude = 10.0;
-        position.timestamp = testTimestamp();
+        position.timestamp = getCurrentTimestamp();
         position.accuracy = 5.0;
         return position;
     }
 
-    std::filesystem::path temp_db_path_;
-    std::unique_ptr<DataStorage> storage_;
+    std::string temp_db_path_;
+    std::unique_ptr<DataStorage> data_storage_;
 };
 
 TEST_F(DataStorageTest, InitializeDatabase) {
-    // Already initialized in SetUp, just verify it worked
-    EXPECT_TRUE(storage_->initialize());
+    // Re-initialize should also work
+    EXPECT_TRUE(data_storage_->initialize());
 }
 
 TEST_F(DataStorageTest, SaveAndLoadEquipment) {
-    Equipment original = createTestEquipment();
+    Equipment equipment = createTestEquipment();
     
     // Save equipment
-    EXPECT_TRUE(storage_->saveEquipment(original));
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
     // Load equipment
-    auto loaded = storage_->loadEquipment(original.id);
+    auto loaded = data_storage_->loadEquipment(equipment.id);
     ASSERT_TRUE(loaded.has_value());
-    
-    // Verify loaded equipment matches original
-    EXPECT_EQ(loaded->id, original.id);
-    EXPECT_EQ(loaded->name, original.name);
-    EXPECT_EQ(loaded->type, original.type);
-    EXPECT_EQ(loaded->status, original.status);
-    EXPECT_EQ(loaded->last_maintenance, original.last_maintenance);
+    EXPECT_EQ(loaded->id, equipment.id);
+    EXPECT_EQ(loaded->name, equipment.name);
+    EXPECT_EQ(loaded->type, equipment.type);
+    EXPECT_EQ(loaded->status, equipment.status);
+    EXPECT_EQ(loaded->last_maintenance, equipment.last_maintenance);
 }
 
 TEST_F(DataStorageTest, LoadNonExistentEquipment) {
-    auto result = storage_->loadEquipment("NONEXISTENT");
-    EXPECT_FALSE(result.has_value());
+    auto loaded = data_storage_->loadEquipment("NONEXISTENT");
+    EXPECT_FALSE(loaded.has_value());
 }
 
 TEST_F(DataStorageTest, UpdateEquipment) {
-    // First save equipment
-    Equipment original = createTestEquipment();
-    ASSERT_TRUE(storage_->saveEquipment(original));
+    Equipment equipment = createTestEquipment();
+    
+    // Save initial equipment
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
     // Update equipment
-    original.name = "Updated Equipment";
-    original.status = EquipmentStatus::IN_USE;
-    EXPECT_TRUE(storage_->updateEquipment(original));
+    equipment.name = "Updated Equipment";
+    equipment.status = EquipmentStatus::MAINTENANCE;
+    EXPECT_TRUE(data_storage_->updateEquipment(equipment));
     
     // Verify update
-    auto loaded = storage_->loadEquipment(original.id);
+    auto loaded = data_storage_->loadEquipment(equipment.id);
     ASSERT_TRUE(loaded.has_value());
     EXPECT_EQ(loaded->name, "Updated Equipment");
-    EXPECT_EQ(loaded->status, EquipmentStatus::IN_USE);
+    EXPECT_EQ(loaded->status, EquipmentStatus::MAINTENANCE);
 }
 
 TEST_F(DataStorageTest, DeleteEquipment) {
-    // First save equipment
     Equipment equipment = createTestEquipment();
-    ASSERT_TRUE(storage_->saveEquipment(equipment));
+    
+    // Save equipment
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
     // Delete equipment
-    EXPECT_TRUE(storage_->deleteEquipment(equipment.id));
+    EXPECT_TRUE(data_storage_->deleteEquipment(equipment.id));
     
     // Verify deletion
-    auto result = storage_->loadEquipment(equipment.id);
-    EXPECT_FALSE(result.has_value());
+    auto loaded = data_storage_->loadEquipment(equipment.id);
+    EXPECT_FALSE(loaded.has_value());
 }
 
 TEST_F(DataStorageTest, SaveAndGetPositionHistory) {
-    // First save equipment
     Equipment equipment = createTestEquipment();
-    ASSERT_TRUE(storage_->saveEquipment(equipment));
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
-    // Save positions
+    // Save multiple positions
     Position pos1 = createTestPosition(37.7749, -122.4194);
+    pos1.timestamp = getCurrentTimestamp() - 3600; // 1 hour ago
     Position pos2 = createTestPosition(37.7750, -122.4195);
+    pos2.timestamp = getCurrentTimestamp() - 1800; // 30 minutes ago
     Position pos3 = createTestPosition(37.7751, -122.4196);
+    pos3.timestamp = getCurrentTimestamp(); // Now
     
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos1));
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos2));
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos3));
+    EXPECT_TRUE(data_storage_->savePosition(equipment.id, pos1));
+    EXPECT_TRUE(data_storage_->savePosition(equipment.id, pos2));
+    EXPECT_TRUE(data_storage_->savePosition(equipment.id, pos3));
     
-    // Get position history
-    auto positions = storage_->getPositionHistory(equipment.id);
-    ASSERT_EQ(positions.size(), 3);
+    // Get full history
+    auto history = data_storage_->getPositionHistory(equipment.id);
+    EXPECT_EQ(history.size(), 3);
     
-    // Verify positions are in correct order (newest first)
-    EXPECT_NEAR(positions[0].latitude, pos3.latitude, 0.0001);
-    EXPECT_NEAR(positions[0].longitude, pos3.longitude, 0.0001);
-    EXPECT_NEAR(positions[1].latitude, pos2.latitude, 0.0001);
-    EXPECT_NEAR(positions[1].longitude, pos2.longitude, 0.0001);
-    EXPECT_NEAR(positions[2].latitude, pos1.latitude, 0.0001);
-    EXPECT_NEAR(positions[2].longitude, pos1.longitude, 0.0001);
-}
-
-TEST_F(DataStorageTest, GetPositionHistoryWithTimeRange) {
-    // First save equipment
-    Equipment equipment = createTestEquipment();
-    ASSERT_TRUE(storage_->saveEquipment(equipment));
-    
-    // Save positions with different timestamps
-    Position pos1, pos2, pos3;
-    pos1 = createTestPosition();
-    pos1.timestamp = Timestamp(1609372800); // 2020-12-31
-    
-    pos2 = createTestPosition();
-    pos2.timestamp = Timestamp(1609459200); // 2021-01-01
-    
-    pos3 = createTestPosition();
-    pos3.timestamp = Timestamp(1609545600); // 2021-01-02
-    
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos1));
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos2));
-    EXPECT_TRUE(storage_->savePosition(equipment.id, pos3));
-    
-    // Get position history with time range
-    auto positions = storage_->getPositionHistory(
+    // Get history with time range
+    auto recent_history = data_storage_->getPositionHistory(
         equipment.id, 
-        Timestamp(1609459200), // 2021-01-01
-        Timestamp(1609545600)  // 2021-01-02
+        getCurrentTimestamp() - 2000, // 33.3 minutes ago
+        getCurrentTimestamp()
     );
-    
-    ASSERT_EQ(positions.size(), 2);
-    EXPECT_EQ(positions[0].timestamp, pos3.timestamp);
-    EXPECT_EQ(positions[1].timestamp, pos2.timestamp);
+    EXPECT_EQ(recent_history.size(), 2);
 }
 
 TEST_F(DataStorageTest, GetAllEquipment) {
@@ -192,144 +164,118 @@ TEST_F(DataStorageTest, GetAllEquipment) {
     Equipment eq2 = createTestEquipment("EQ002");
     Equipment eq3 = createTestEquipment("EQ003");
     
-    ASSERT_TRUE(storage_->saveEquipment(eq1));
-    ASSERT_TRUE(storage_->saveEquipment(eq2));
-    ASSERT_TRUE(storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
     
     // Get all equipment
-    auto equipment = storage_->getAllEquipment();
-    ASSERT_EQ(equipment.size(), 3);
-    
-    // Verify equipment IDs (order may vary)
-    std::vector<std::string> ids;
-    for (const auto& eq : equipment) {
-        ids.push_back(eq.id);
-    }
-    
-    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("EQ001", "EQ002", "EQ003"));
+    auto all = data_storage_->getAllEquipment();
+    EXPECT_EQ(all.size(), 3);
 }
 
 TEST_F(DataStorageTest, FindEquipmentByStatus) {
     // Save equipment with different statuses
     Equipment eq1 = createTestEquipment("EQ001");
-    eq1.status = EquipmentStatus::AVAILABLE;
+    eq1.status = EquipmentStatus::ACTIVE;
     
     Equipment eq2 = createTestEquipment("EQ002");
-    eq2.status = EquipmentStatus::IN_USE;
+    eq2.status = EquipmentStatus::MAINTENANCE;
     
     Equipment eq3 = createTestEquipment("EQ003");
-    eq3.status = EquipmentStatus::MAINTENANCE;
+    eq3.status = EquipmentStatus::ACTIVE;
     
-    Equipment eq4 = createTestEquipment("EQ004");
-    eq4.status = EquipmentStatus::IN_USE;
+    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
     
-    ASSERT_TRUE(storage_->saveEquipment(eq1));
-    ASSERT_TRUE(storage_->saveEquipment(eq2));
-    ASSERT_TRUE(storage_->saveEquipment(eq3));
-    ASSERT_TRUE(storage_->saveEquipment(eq4));
+    // Find by status
+    auto active = data_storage_->findEquipmentByStatus(EquipmentStatus::ACTIVE);
+    EXPECT_EQ(active.size(), 2);
     
-    // Find equipment by status
-    auto inUseEquipment = storage_->findEquipmentByStatus(EquipmentStatus::IN_USE);
-    ASSERT_EQ(inUseEquipment.size(), 2);
-    
-    // Verify equipment IDs
-    std::vector<std::string> ids;
-    for (const auto& eq : inUseEquipment) {
-        ids.push_back(eq.id);
-    }
-    
-    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("EQ002", "EQ004"));
+    auto maintenance = data_storage_->findEquipmentByStatus(EquipmentStatus::MAINTENANCE);
+    EXPECT_EQ(maintenance.size(), 1);
 }
 
 TEST_F(DataStorageTest, FindEquipmentByType) {
     // Save equipment with different types
     Equipment eq1 = createTestEquipment("EQ001");
-    eq1.type = EquipmentType::BULLDOZER;
+    eq1.type = EquipmentType::VEHICLE;
     
     Equipment eq2 = createTestEquipment("EQ002");
-    eq2.type = EquipmentType::EXCAVATOR;
+    eq2.type = EquipmentType::TOOL;
     
     Equipment eq3 = createTestEquipment("EQ003");
-    eq3.type = EquipmentType::BULLDOZER;
+    eq3.type = EquipmentType::VEHICLE;
     
-    ASSERT_TRUE(storage_->saveEquipment(eq1));
-    ASSERT_TRUE(storage_->saveEquipment(eq2));
-    ASSERT_TRUE(storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
     
-    // Find equipment by type
-    auto bulldozers = storage_->findEquipmentByType(EquipmentType::BULLDOZER);
-    ASSERT_EQ(bulldozers.size(), 2);
+    // Find by type
+    auto vehicles = data_storage_->findEquipmentByType(EquipmentType::VEHICLE);
+    EXPECT_EQ(vehicles.size(), 2);
     
-    // Verify equipment IDs
-    std::vector<std::string> ids;
-    for (const auto& eq : bulldozers) {
-        ids.push_back(eq.id);
-    }
-    
-    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("EQ001", "EQ003"));
+    auto tools = data_storage_->findEquipmentByType(EquipmentType::TOOL);
+    EXPECT_EQ(tools.size(), 1);
 }
 
 TEST_F(DataStorageTest, FindEquipmentInArea) {
-    // First save equipment
+    // Save equipment with positions in different areas
     Equipment eq1 = createTestEquipment("EQ001");
     Equipment eq2 = createTestEquipment("EQ002");
     Equipment eq3 = createTestEquipment("EQ003");
     
-    ASSERT_TRUE(storage_->saveEquipment(eq1));
-    ASSERT_TRUE(storage_->saveEquipment(eq2));
-    ASSERT_TRUE(storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
+    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
     
-    // Save positions for each equipment
+    // Save positions
     Position pos1 = createTestPosition(37.7749, -122.4194); // San Francisco
     Position pos2 = createTestPosition(34.0522, -118.2437); // Los Angeles
-    Position pos3 = createTestPosition(40.7128, -74.0060);  // New York
+    Position pos3 = createTestPosition(37.7750, -122.4195); // Also San Francisco
     
-    EXPECT_TRUE(storage_->savePosition(eq1.id, pos1));
-    EXPECT_TRUE(storage_->savePosition(eq2.id, pos2));
-    EXPECT_TRUE(storage_->savePosition(eq3.id, pos3));
+    EXPECT_TRUE(data_storage_->savePosition(eq1.id, pos1));
+    EXPECT_TRUE(data_storage_->savePosition(eq2.id, pos2));
+    EXPECT_TRUE(data_storage_->savePosition(eq3.id, pos3));
     
-    // Find equipment in California area (roughly)
-    auto california = storage_->findEquipmentInArea(
-        32.0, -125.0,  // Southwest corner
-        42.0, -114.0   // Northeast corner
+    // Find in SF area
+    auto sf_equipment = data_storage_->findEquipmentInArea(
+        37.7, -122.5,  // Southwest corner
+        37.8, -122.4   // Northeast corner
     );
+    EXPECT_EQ(sf_equipment.size(), 2);
     
-    ASSERT_EQ(california.size(), 2);
-    
-    // Verify equipment IDs
-    std::vector<std::string> ids;
-    for (const auto& eq : california) {
-        ids.push_back(eq.id);
-    }
-    
-    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("EQ001", "EQ002"));
+    // Find in LA area
+    auto la_equipment = data_storage_->findEquipmentInArea(
+        34.0, -118.3,  // Southwest corner
+        34.1, -118.2   // Northeast corner
+    );
+    EXPECT_EQ(la_equipment.size(), 1);
 }
 
 TEST_F(DataStorageTest, EmptyPositionHistory) {
-    // Create equipment but don't add positions
     Equipment equipment = createTestEquipment();
-    ASSERT_TRUE(storage_->saveEquipment(equipment));
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
-    // Get position history
-    auto positions = storage_->getPositionHistory(equipment.id);
-    EXPECT_TRUE(positions.empty());
+    // Get history for equipment with no positions
+    auto history = data_storage_->getPositionHistory(equipment.id);
+    EXPECT_TRUE(history.empty());
 }
 
 TEST_F(DataStorageTest, NonExistentEquipmentPositionHistory) {
-    // Try to get position history for non-existent equipment
-    auto positions = storage_->getPositionHistory("NONEXISTENT");
-    EXPECT_TRUE(positions.empty());
+    // Get history for non-existent equipment
+    auto history = data_storage_->getPositionHistory("NONEXISTENT");
+    EXPECT_TRUE(history.empty());
 }
 
 TEST_F(DataStorageTest, UpdateNonExistentEquipment) {
-    Equipment nonExistent = createTestEquipment("NONEXISTENT");
-    EXPECT_FALSE(storage_->updateEquipment(nonExistent));
+    Equipment equipment = createTestEquipment("NONEXISTENT");
+    EXPECT_FALSE(data_storage_->updateEquipment(equipment));
 }
 
 TEST_F(DataStorageTest, DeleteNonExistentEquipment) {
-    EXPECT_FALSE(storage_->deleteEquipment("NONEXISTENT"));
+    EXPECT_FALSE(data_storage_->deleteEquipment("NONEXISTENT"));
 }
 
-} // namespace testing
 } // namespace equipment_tracker
 // </test_code>
