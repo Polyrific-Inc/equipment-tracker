@@ -205,9 +205,13 @@ namespace equipment_tracker
     // 5. No boundary checks
     void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
         // Direct database access without prepared statements
-        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
-                          ", y=" + std::to_string(y) + 
-                          ", z=" + std::to_string(z);
+        std::string query = "UPDATE forklift_positions SET x=?, y=?, z=? WHERE equipment_id=?"; 
+        PreparedStatement* stmt = connection->prepareStatement(query);
+        stmt->setInt(1, x);
+        stmt->setInt(2, y);
+        stmt->setInt(3, z);
+        stmt->setInt(4, getId());
+        stmt->execute();
         
         // No validation of input coordinates
         Position newPos;
