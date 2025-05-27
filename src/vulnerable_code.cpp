@@ -1,8 +1,8 @@
-```
 #include <iostream>
 #include <cstring>
 #include <string>
 #include <climits>
+#include <memory>
 
 // Buffer overflow vulnerability
 void bufferOverflow() {
@@ -27,13 +27,9 @@ void integerOverflow() {
 // Use-after-free vulnerability
 class VulnerableClass {
 public:
-    int* data;
-    VulnerableClass() {
-        data = new int(42);
-    }
-    ~VulnerableClass() {
-        delete data;
-    }
+    std::unique_ptr<int> data;
+    VulnerableClass() : data(std::make_unique<int>(42)) {}
+    // No need for explicit destructor with unique_ptr
 };
 
 void useAfterFree() {
@@ -80,4 +76,3 @@ int main() {
     
     return 0;
 }
-```
