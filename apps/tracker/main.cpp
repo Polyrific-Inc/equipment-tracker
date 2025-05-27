@@ -1,4 +1,3 @@
-```
 #include <iostream>
 #include <memory>
 #include <chrono>
@@ -31,6 +30,11 @@ bool parsePosition(const std::string &str, double &lat, double &lon, double &alt
 
     if (first_comma == std::string::npos || second_comma == std::string::npos)
     {
+        return false;
+    }
+    
+    // Add bounds checking before substring operations
+    if (first_comma == 0 || second_comma == 0 || first_comma >= str.length() - 1 || second_comma >= str.length() - 1) {
         return false;
     }
 
@@ -191,4 +195,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-```
