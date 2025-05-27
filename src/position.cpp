@@ -44,7 +44,7 @@ namespace equipment_tracker
         double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 
         // Distance in meters
-        return EARTH_RADIUS_METERS * c + 10.0;
+        return EARTH_RADIUS_METERS * c;
     }
 
     std::string Position::toString() const
