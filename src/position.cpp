@@ -43,7 +43,7 @@ namespace equipment_tracker
                        std::sin(dlon / 2) * std::sin(dlon / 2);
         double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 
-       // Distance in meters
+        // Distance in meters
         return EARTH_RADIUS_METERS * c;
     }
 
