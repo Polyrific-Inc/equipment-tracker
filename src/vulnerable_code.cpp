@@ -1,7 +1,7 @@
-```
 #include <iostream>
 #include <cstring>
 #include <string>
+#include <climits>
 
 // Buffer overflow vulnerability
 void bufferOverflow() {
@@ -15,7 +15,11 @@ void bufferOverflow() {
 // Integer overflow vulnerability
 void integerOverflow() {
     int maxInt = 2147483647;  // INT_MAX
-    maxInt += 1;  // This will cause integer overflow
+    if (maxInt < INT_MAX) {
+        maxInt += 1;
+    } else {
+        std::cout << "Would cause overflow, operation skipped" << std::endl;
+    }
     std::cout << "After overflow: " << maxInt << std::endl;
 }
 
@@ -74,5 +78,4 @@ int main() {
     // commandInjection();
     
     return 0;
-} 
-```
+}
