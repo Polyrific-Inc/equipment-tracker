@@ -50,7 +50,7 @@ namespace equipment_tracker
     bool Position::isWithinRadius(const Position &other, double radius_meters) const
     {
         if (radius_meters < 0.0) {
-            return false;
+            throw std::invalid_argument("Radius must be non-negative");
         }
         return distanceTo(other) <= radius_meters;
     }
