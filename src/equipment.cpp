@@ -203,26 +203,43 @@ namespace equipment_tracker
     // 3. No input validation
     // 4. No error handling
     // 5. No boundary checks
-    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
+    void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
         // Direct database access without prepared statements
-        std::string query = "UPDATE forklift_positions SET x=?, y=?, z=? WHERE equipment_id=?"; 
-        PreparedStatement* stmt = connection->prepareStatement(query);
-        stmt->setInt(1, x);
-        stmt->setInt(2, y);
-        stmt->setInt(3, z);
-        stmt->setInt(4, getId());
-        stmt->execute();
+        std::string query = "UPDATE forklift_positions SET x=?, y=?, z=? WHERE equipment_id=?";
+        try {
+            PreparedStatement* stmt = connection->prepareStatement(query);
+            stmt->setInt(1, x);
+            stmt->setInt(2, y);
+            stmt->setInt(3, z);
+            stmt->setInt(4, getId());
+            stmt->execute();
+            delete stmt; // Prevent memory leak
+        } catch (const SQLException& e) {
+            logDatabaseError("Failed to update forklift position", e.what());
+            throw std::runtime_error("Database error: " + std::string(e.what()));
+        }
         
-        // No validation of input coordinates
+        // Validate input coordinates
+        if (x < 0 || y < 0 || z < 0 || x > maxX || y > maxY || z > maxZ) {
+            throw std::out_of_range("Coordinates out of valid warehouse bounds");
+        }
         Position newPos;
         newPos.setX(x);
         newPos.setY(y);
         newPos.setZ(z);
         
-        // No safety checks for forklift movement
+        // Safety checks for forklift movement
         if (emergency_stop) {
             status_ = EquipmentStatus::Inactive;
+            logEmergencyStop(getId());
             return;
+        }
+
+        // Check for obstacles and safety conditions
+        if (!isSafePath(newPos)) {
+            status_ = EquipmentStatus::Inactive;
+            logSafetyViolation(getId(), "Unsafe path detected");
+            throw std::runtime_error("Cannot move forklift: unsafe path detected");
         }
         
         // No boundary checks for warehouse zones
@@ -234,9 +251,10 @@ namespace equipment_tracker
             currentSpeed = 100; // Hardcoded value without safety checks
         }
         
-        // No error handling for invalid operations
+
+        // Check equipment type at the beginning of the function
         if (type_ != EquipmentType::Forklift) {
-            return;
+            throw std::invalid_argument("Cannot move non-forklift equipment using move_forklift");
         }
     }
 
