@@ -9,6 +9,9 @@ RUN apk add --no-cache \
     ninja \
     libc-dev
 
+# Set Alpine environment variable for CMake
+ENV ALPINE=1
+
 # Set the working directory
 WORKDIR /app
 
