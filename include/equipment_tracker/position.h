@@ -64,7 +64,7 @@ namespace equipment_tracker
         * @param other The other position to check distance against
         * @param radius_meters The radius in meters to check within (must be non-negative)
         * @return true if this position is within the specified radius of the other position
-        *         Returns false if radius_meters is negative
+        *         Throws std::invalid_argument if radius_meters is negative
         */
         bool isWithinRadius(const Position &other, double radius_meters) const;
 
