@@ -1,3 +1,4 @@
+```
 #include <iostream>
 #include <memory>
 #include <chrono>
@@ -38,6 +39,15 @@ bool parsePosition(const std::string &str, double &lat, double &lon, double &alt
         lat = std::stod(str.substr(0, first_comma));
         lon = std::stod(str.substr(first_comma + 1, second_comma - first_comma - 1));
         alt = std::stod(str.substr(second_comma + 1));
+        
+        // Validate latitude (-90 to 90)
+        if (lat < -90.0 || lat > 90.0)
+            return false;
+            
+        // Validate longitude (-180 to 180)
+        if (lon < -180.0 || lon > 180.0)
+            return false;
+            
         return true;
     }
     catch (const std::exception &e)
@@ -181,3 +191,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+```
