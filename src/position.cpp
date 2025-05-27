@@ -63,8 +63,8 @@ namespace equipment_tracker
         std::tm tm = *std::localtime(&time_t);
 #endif
 
-        ss << "Position(lat=" << std::fixed << std::setprecision(4) << latitude_
-           << ", lon=" << std::fixed << std::setprecision(4) << longitude_
+        ss << "Position(lat=" << std::fixed << std::setprecision(6) << latitude_
+           << ", lon=" << std::fixed << std::setprecision(6) << longitude_
            << ", alt=" << std::fixed << std::setprecision(2) << altitude_
            << "m, acc=" << std::fixed << std::setprecision(2) << accuracy_
            << "m, time=" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << ")";
