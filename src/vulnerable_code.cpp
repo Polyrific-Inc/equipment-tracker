@@ -1,3 +1,4 @@
+```
 #include <iostream>
 #include <cstring>
 #include <string>
@@ -44,7 +45,7 @@ void useAfterFree() {
 // Unsafe string handling
 void unsafeStringHandling() {
     char* str = new char[5];
-    strcpy(str, "This is a very long string that will cause buffer overflow");  // No bounds checking
+    strncpy(str, "This", 4); str[4] = '\0';  // Fixed: Using strncpy with proper size limits
     std::cout << str << std::endl;
     delete[] str;
 }
@@ -79,3 +80,4 @@ int main() {
     
     return 0;
 }
+```
