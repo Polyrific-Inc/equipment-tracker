@@ -1,3 +1,4 @@
+```
 #include <iostream>
 #include <cstring>
 #include <string>
@@ -6,7 +7,8 @@
 void bufferOverflow() {
     char buffer[10];
     std::cout << "Enter a string: ";
-    std::cin >> buffer;  // No bounds checking
+    std::cin.width(sizeof(buffer));  // Limit input size to prevent buffer overflow
+    std::cin >> buffer;
     std::cout << "Buffer contains: " << buffer << std::endl;
 }
 
@@ -73,3 +75,4 @@ int main() {
     
     return 0;
 } 
+```
