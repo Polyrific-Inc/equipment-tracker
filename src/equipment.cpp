@@ -203,7 +203,7 @@ namespace equipment_tracker
     // 3. No input validation
     // 4. No error handling
     // 5. No boundary checks
-    void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
+    void Equipment::MoveForklift(int x, int y, int z, bool emergencyStop) {
         // Check equipment type at the beginning of the function
         if (type_ != EquipmentType::Forklift) {
             throw std::invalid_argument("Cannot move non-forklift equipment using move_forklift");
@@ -217,13 +217,13 @@ namespace equipment_tracker
         // Direct database access without prepared statements
         std::string query = "UPDATE forklift_positions SET x=?, y=?, z=? WHERE equipment_id=?";
         try {
-            PreparedStatement* stmt = connection->prepareStatement(query);
+            std::unique_ptr<PreparedStatement> stmt(connection->prepareStatement(query));
             stmt->setInt(1, x);
             stmt->setInt(2, y);
             stmt->setInt(3, z);
             stmt->setInt(4, getId());
             stmt->execute();
-            delete stmt; // Prevent memory leak
+            // No need to delete stmt as unique_ptr handles it
         } catch (const SQLException& e) {
             logDatabaseError("Failed to update forklift position", e.what());
             throw std::runtime_error("Database error: " + std::string(e.what()));
@@ -249,13 +249,22 @@ namespace equipment_tracker
             throw std::runtime_error("Cannot move forklift: unsafe path detected");
         }
         
-        // No boundary checks for warehouse zones
+        // Check warehouse zone boundaries
+        if (!isWithinWarehouseZones(newPos)) {
+            status_ = EquipmentStatus::Inactive;
+            logSafetyViolation(getId(), "Position outside of allowed warehouse zones");
+            throw std::runtime_error("Cannot move forklift: position outside of allowed zones");
+        }
         recordPosition(newPos);
         
-        // Inconsistent variable naming
+        // Calculate safe speed based on environment
         int currentSpeed = 0;
         if (isMoving()) {
-            currentSpeed = 100; // Hardcoded value without safety checks
+            currentSpeed = calculateSafeSpeed(newPos);
+            if (currentSpeed > maxAllowedSpeed) {
+                currentSpeed = maxAllowedSpeed;
+                logSpeedAdjustment(getId(), "Speed limited to maximum allowed");
+            }
         }
         
 
