@@ -1,4 +1,5 @@
 #include <sstream>
+#include <iostream>
 #include <chrono>
 #include <cmath>
 #include "equipment_tracker/equipment.h"
