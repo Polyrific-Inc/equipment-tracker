@@ -3,6 +3,7 @@
 #include <iomanip>
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/constants.h"
+#include "equipment_tracker/utils/time_utils.h"
 
 // Define M_PI if not available
 #ifndef M_PI
