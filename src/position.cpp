@@ -24,24 +24,38 @@ namespace equipment_tracker
 
     double Position::distanceTo(const Position &other) const
     {
-        // Implementation of the Haversine formula to calculate
-        // distance between two points on Earth
+        // Early return for same position (pointer comparison)
+        if (this == &other)
+        {
+            return 0.0;
+        }
+
+        // Early return for identical coordinates (with small epsilon for floating point comparison)
+        const double epsilon = 1e-9;
+        if (std::abs(latitude_ - other.latitude_) < epsilon &&
+            std::abs(longitude_ - other.longitude_) < epsilon)
+        {
+            return 0.0;
+        }
 
         // Convert latitude and longitude from degrees to radians
-        double lat1_rad = latitude_ * M_PI / 180.0;
-        double lat2_rad = other.latitude_ * M_PI / 180.0;
-        double lon1_rad = longitude_ * M_PI / 180.0;
-        double lon2_rad = other.longitude_ * M_PI / 180.0;
+        const double lat1_rad = latitude_ * M_PI / 180.0;
+        const double lat2_rad = other.latitude_ * M_PI / 180.0;
 
-        // Calculate differences
-        double dlat = lat2_rad - lat1_rad;
-        double dlon = lon2_rad - lon1_rad;
+        // Calculate differences in radians
+        const double dlat = lat2_rad - lat1_rad;
+        const double dlon = (other.longitude_ - longitude_) * M_PI / 180.0;
 
-        // Haversine formula
-        double a = std::sin(dlat / 2) * std::sin(dlat / 2) +
-                   std::cos(lat1_rad) * std::cos(lat2_rad) *
-                       std::sin(dlon / 2) * std::sin(dlon / 2);
-        double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
+        // Pre-calculate sine values to avoid redundant calculations
+        const double sin_dlat_half = std::sin(dlat * 0.5);
+        const double sin_dlon_half = std::sin(dlon * 0.5);
+
+        // Haversine formula - optimized version
+        const double a = sin_dlat_half * sin_dlat_half +
+                         std::cos(lat1_rad) * std::cos(lat2_rad) *
+                             sin_dlon_half * sin_dlon_half;
+
+        const double c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(1.0 - a));
 
         // Distance in meters
         return EARTH_RADIUS_METERS * c;
