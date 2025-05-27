@@ -49,6 +49,9 @@ namespace equipment_tracker
 
     bool Position::isWithinRadius(const Position &other, double radius_meters) const
     {
+        if (radius_meters < 0.0) {
+            return false;
+        }
         return distanceTo(other) <= radius_meters;
     }
 
