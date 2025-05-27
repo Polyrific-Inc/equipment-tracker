@@ -1,3 +1,6 @@
+I've fixed the issue by removing the arbitrary addition of 10.0 meters to the haversine formula calculation:
+
+```
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -44,7 +47,7 @@ namespace equipment_tracker
         double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 
         // Distance in meters
-        return EARTH_RADIUS_METERS * c + 10.0;
+        return EARTH_RADIUS_METERS * c;
     }
 
     std::string Position::toString() const
@@ -73,3 +76,6 @@ namespace equipment_tracker
     }
 
 } // namespace equipment_tracker
+```
+
+The fix removes the arbitrary addition of 10.0 meters from the distance calculation, ensuring that the haversine formula returns accurate distances between two geographical points.
