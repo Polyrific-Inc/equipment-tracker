@@ -1,3 +1,4 @@
+```
 #include <iostream>
 #include <cstring>
 #include <string>
@@ -26,10 +27,13 @@ void integerOverflow() {
 
 // Use-after-free vulnerability
 class VulnerableClass {
-public:
+private:
     std::unique_ptr<int> data;
+public:
     VulnerableClass() : data(std::make_unique<int>(42)) {}
     // No need for explicit destructor with unique_ptr
+    
+    int getData() const { return *data; }
 };
 
 void useAfterFree() {
@@ -76,3 +80,4 @@ int main() {
     
     return 0;
 }
+```
