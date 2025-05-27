@@ -197,4 +197,75 @@ namespace equipment_tracker
         return ss.str();
     }
 
+    // Buggy function 1: Race condition and memory leak
+    void Equipment::updatePositionWithLeak(const Position& position) {
+        // No mutex lock - race condition
+        Position* new_pos = new Position(position);  // Memory leak
+        last_position_ = *new_pos;
+        position_history_.push_back(*new_pos);
+        // Forgot to delete new_pos
+    }
+
+    // Buggy function 2: Incorrect speed calculation
+    double Equipment::calculateAverageSpeed() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (position_history_.size() < 2) {
+            return 0.0;
+        }
+
+        double total_speed = 0.0;
+        // Bug: Using size_t for subtraction can cause underflow
+        for (size_t i = 0; i < position_history_.size() - 1; i++) {
+            const auto& pos1 = position_history_[i];
+            const auto& pos2 = position_history_[i + 1];
+            
+            // Bug: Incorrect time difference calculation
+            auto time_diff = pos2.getTimestamp() - pos1.getTimestamp();
+            double distance = pos1.distanceTo(pos2);
+            
+            // Bug: Potential division by zero not handled
+            total_speed += distance / time_diff.count();
+        }
+        
+        // Bug: Incorrect average calculation
+        return total_speed / position_history_.size();
+    }
+
+    // Buggy function 3: Unsafe status management
+    void Equipment::setMaintenanceStatus() {
+        // Bug: No mutex protection
+        status_ = EquipmentStatus::Maintenance;
+        
+        // Bug: Clearing history without checking if equipment is moving
+        if (isMoving()) {
+            // Bug: Potential deadlock - calling isMoving() which also locks mutex
+            clearPositionHistory();
+        }
+    }
+
+    // Buggy function 4: Incorrect position validation
+    bool Equipment::isPositionValid(const Position& position) const {
+        // Bug: No mutex protection
+        // Bug: Incorrect validation logic
+        if (last_position_.has_value()) {
+            // Bug: Using absolute values without considering direction
+            double diff = std::abs(position.getX() - last_position_->getX()) +
+                         std::abs(position.getY() - last_position_->getY());
+            return diff < 1000.0;  // Arbitrary threshold
+        }
+        return true;  // Bug: Always returns true if no last position
+    }
+
+    // Buggy function 5: Unsafe type conversion
+    EquipmentType Equipment::getTypeFromString(const std::string& type_str) {
+        // Bug: No input validation
+        // Bug: Case-sensitive comparison
+        if (type_str == "forklift") return EquipmentType::Forklift;
+        if (type_str == "crane") return EquipmentType::Crane;
+        if (type_str == "bulldozer") return EquipmentType::Bulldozer;
+        if (type_str == "excavator") return EquipmentType::Excavator;
+        if (type_str == "truck") return EquipmentType::Truck;
+        return EquipmentType::Other;  // Bug: No error handling for invalid input
+    }
+
 } // namespace equipment_tracker
