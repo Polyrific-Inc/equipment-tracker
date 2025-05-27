@@ -6,6 +6,7 @@
 #include <cmath>
 #include "utils/types.h"
 #include "utils/constants.h"
+#include "utils/time_utils.h"
 
 namespace equipment_tracker
 {

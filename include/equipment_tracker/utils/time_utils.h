@@ -1,90 +1,100 @@
+#pragma once
+
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <string>
 #include "equipment_tracker/utils/types.h"
 
 namespace equipment_tracker
 {
+    // Forward declarations only - implementations are in time_utils.cpp
 
-    // Implement the function declared in types.h
-    Timestamp getCurrentTimestamp()
-    {
-        return std::chrono::system_clock::now();
-    }
+    /**
+     * @brief Get current timestamp
+     * @return Current system timestamp
+     */
+    Timestamp getCurrentTimestamp();
 
-    std::string formatTimestamp(const Timestamp &timestamp, const std::string &format)
-    {
-        auto time_t = std::chrono::system_clock::to_time_t(timestamp);
+    /**
+     * @brief Format timestamp to string using specified format
+     * @param timestamp The timestamp to format
+     * @param format Format string (e.g., "%Y-%m-%d %H:%M:%S")
+     * @return Formatted timestamp string
+     */
+    std::string formatTimestamp(const Timestamp &timestamp, const std::string &format = "%Y-%m-%d %H:%M:%S");
 
-        // Use safer localtime_s for Windows
-#ifdef _WIN32
-        std::tm tm_buf;
-        localtime_s(&tm_buf, &time_t);
-        std::tm &tm = tm_buf;
-#else
-        std::tm tm = *std::localtime(&time_t);
-#endif
+    /**
+     * @brief Parse timestamp from string
+     * @param str String representation of timestamp
+     * @param format Format string used for parsing
+     * @return Parsed timestamp
+     */
+    Timestamp parseTimestamp(const std::string &str, const std::string &format = "%Y-%m-%d %H:%M:%S");
 
-        std::stringstream ss;
-        ss << std::put_time(&tm, format.c_str());
+    /**
+     * @brief Calculate difference between two timestamps in seconds
+     * @param t1 First timestamp
+     * @param t2 Second timestamp
+     * @return Difference in seconds (t1 - t2)
+     */
+    int64_t timestampDiffSeconds(const Timestamp &t1, const Timestamp &t2);
 
-        return ss.str();
-    }
+    /**
+     * @brief Calculate difference between two timestamps in minutes
+     * @param t1 First timestamp
+     * @param t2 Second timestamp
+     * @return Difference in minutes (t1 - t2)
+     */
+    int64_t timestampDiffMinutes(const Timestamp &t1, const Timestamp &t2);
 
-    Timestamp parseTimestamp(const std::string &str, const std::string &format)
-    {
-        std::tm tm = {};
-        std::stringstream ss(str);
+    /**
+     * @brief Calculate difference between two timestamps in hours
+     * @param t1 First timestamp
+     * @param t2 Second timestamp
+     * @return Difference in hours (t1 - t2)
+     */
+    int64_t timestampDiffHours(const Timestamp &t1, const Timestamp &t2);
 
-        ss >> std::get_time(&tm, format.c_str());
+    /**
+     * @brief Calculate difference between two timestamps in days
+     * @param t1 First timestamp
+     * @param t2 Second timestamp
+     * @return Difference in days (t1 - t2)
+     */
+    int64_t timestampDiffDays(const Timestamp &t1, const Timestamp &t2);
 
-        auto time_t = std::mktime(&tm);
-        return std::chrono::system_clock::from_time_t(time_t);
-    }
+    /**
+     * @brief Add seconds to timestamp
+     * @param timestamp Base timestamp
+     * @param seconds Seconds to add
+     * @return New timestamp with added seconds
+     */
+    Timestamp addSeconds(const Timestamp &timestamp, int64_t seconds);
 
-    int64_t timestampDiffSeconds(const Timestamp &t1, const Timestamp &t2)
-    {
-        auto duration = std::chrono::duration_cast<std::chrono::seconds>(t1 - t2);
-        return duration.count();
-    }
+    /**
+     * @brief Add minutes to timestamp
+     * @param timestamp Base timestamp
+     * @param minutes Minutes to add
+     * @return New timestamp with added minutes
+     */
+    Timestamp addMinutes(const Timestamp &timestamp, int64_t minutes);
 
-    int64_t timestampDiffMinutes(const Timestamp &t1, const Timestamp &t2)
-    {
-        auto duration = std::chrono::duration_cast<std::chrono::minutes>(t1 - t2);
-        return duration.count();
-    }
+    /**
+     * @brief Add hours to timestamp
+     * @param timestamp Base timestamp
+     * @param hours Hours to add
+     * @return New timestamp with added hours
+     */
+    Timestamp addHours(const Timestamp &timestamp, int64_t hours);
 
-    int64_t timestampDiffHours(const Timestamp &t1, const Timestamp &t2)
-    {
-        auto duration = std::chrono::duration_cast<std::chrono::hours>(t1 - t2);
-        return duration.count();
-    }
-
-    int64_t timestampDiffDays(const Timestamp &t1, const Timestamp &t2)
-    {
-        auto duration = std::chrono::duration_cast<std::chrono::hours>(t1 - t2);
-        return duration.count() / 24;
-    }
-
-    Timestamp addSeconds(const Timestamp &timestamp, int64_t seconds)
-    {
-        return timestamp + std::chrono::seconds(seconds);
-    }
-
-    Timestamp addMinutes(const Timestamp &timestamp, int64_t minutes)
-    {
-        return timestamp + std::chrono::minutes(minutes);
-    }
-
-    Timestamp addHours(const Timestamp &timestamp, int64_t hours)
-    {
-        return timestamp + std::chrono::hours(hours);
-    }
-
-    Timestamp addDays(const Timestamp &timestamp, int64_t days)
-    {
-        return timestamp + std::chrono::hours(days * 24);
-    }
+    /**
+     * @brief Add days to timestamp
+     * @param timestamp Base timestamp
+     * @param days Days to add
+     * @return New timestamp with added days
+     */
+    Timestamp addDays(const Timestamp &timestamp, int64_t days);
 
 } // namespace equipment_tracker
