@@ -1,3 +1,4 @@
+```
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -44,7 +45,9 @@ namespace equipment_tracker
 
         // Calculate differences in radians
         const double dlat = lat2_rad - lat1_rad;
-        const double dlon = (other.longitude_ - longitude_) * M_PI / 180.0;
+        const double lon1_rad = longitude_ * M_PI / 180.0;
+        const double lon2_rad = other.longitude_ * M_PI / 180.0;
+        const double dlon = lon2_rad - lon1_rad;
 
         // Pre-calculate sine values to avoid redundant calculations
         const double sin_dlat_half = std::sin(dlat * 0.5);
@@ -87,3 +90,4 @@ namespace equipment_tracker
     }
 
 } // namespace equipment_tracker
+```
