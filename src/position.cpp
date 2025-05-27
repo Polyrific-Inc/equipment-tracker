@@ -72,7 +72,7 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    double Position::calculate_bearing(const Position& other) const
+    double Position::calculateBearing(const Position& other) const
     {
         // Bad practice: No input validation
         // Bad practice: Inconsistent naming (snake_case)
@@ -86,7 +86,10 @@ namespace equipment_tracker
         double y = std::sin(lon2 - lon1) * std::cos(lat2);
         double x = std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon2 - lon1);
         
-        // Bad practice: No handling of division by zero
+        // atan2 handles division by zero internally, but we should check for valid inputs
+        if (std::isnan(y) || std::isnan(x)) {
+            throw std::invalid_argument("Invalid coordinates for bearing calculation");
+        }
         double bearing = std::atan2(y, x);
         
         // Bad practice: No validation of result

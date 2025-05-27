@@ -204,6 +204,16 @@ namespace equipment_tracker
     // 4. No error handling
     // 5. No boundary checks
     void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
+        // Check equipment type at the beginning of the function
+        if (type_ != EquipmentType::Forklift) {
+            throw std::invalid_argument("Cannot move non-forklift equipment using move_forklift");
+        }
+        
+        // Validate input coordinates
+        if (x < 0 || y < 0 || z < 0 || x > maxX || y > maxY || z > maxZ) {
+            throw std::out_of_range("Coordinates out of valid warehouse bounds");
+        }
+
         // Direct database access without prepared statements
         std::string query = "UPDATE forklift_positions SET x=?, y=?, z=? WHERE equipment_id=?";
         try {
@@ -219,17 +229,14 @@ namespace equipment_tracker
             throw std::runtime_error("Database error: " + std::string(e.what()));
         }
         
-        // Validate input coordinates
-        if (x < 0 || y < 0 || z < 0 || x > maxX || y > maxY || z > maxZ) {
-            throw std::out_of_range("Coordinates out of valid warehouse bounds");
-        }
+        
         Position newPos;
         newPos.setX(x);
         newPos.setY(y);
         newPos.setZ(z);
         
         // Safety checks for forklift movement
-        if (emergency_stop) {
+        if (emergencyStop) {
             status_ = EquipmentStatus::Inactive;
             logEmergencyStop(getId());
             return;
@@ -252,10 +259,7 @@ namespace equipment_tracker
         }
         
 
-        // Check equipment type at the beginning of the function
-        if (type_ != EquipmentType::Forklift) {
-            throw std::invalid_argument("Cannot move non-forklift equipment using move_forklift");
-        }
+       
     }
 
 } // namespace equipment_tracker
