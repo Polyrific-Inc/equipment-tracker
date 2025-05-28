@@ -455,7 +455,7 @@ namespace equipment_tracker
                         auto equipment = loadEquipment(id);
                         if (equipment)
                         {
-                            result.push_back(*equipment);
+                            result.push_back(std::move(*equipment));
                         }
                     }
                 }
