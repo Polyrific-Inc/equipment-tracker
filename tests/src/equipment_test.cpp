@@ -25,16 +25,16 @@ protected:
     void SetUp() override {
         // Common setup for all tests
     }
-    
+
     void TearDown() override {
         // Common cleanup for all tests
     }
 };
 
 TEST_F(EquipmentTest, ConstructorInitializesCorrectly) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
-    EXPECT_EQ(equipment.getId(), "E123");
+    EXPECT_EQ(equipment.getId(), "EQ001");
     EXPECT_EQ(equipment.getType(), EquipmentType::Forklift);
     EXPECT_EQ(equipment.getName(), "Test Forklift");
     EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Inactive);
@@ -42,8 +42,8 @@ TEST_F(EquipmentTest, ConstructorInitializesCorrectly) {
     EXPECT_TRUE(equipment.getPositionHistory().empty());
 }
 
-TEST_F(EquipmentTest, MoveConstructorWorks) {
-    Equipment original("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, MoveConstructorWorksCorrectly) {
+    Equipment original("EQ001", EquipmentType::Forklift, "Test Forklift");
     original.setStatus(EquipmentStatus::Active);
     
     Position pos(10.0, 20.0);
@@ -51,152 +51,167 @@ TEST_F(EquipmentTest, MoveConstructorWorks) {
     
     Equipment moved(std::move(original));
     
-    EXPECT_EQ(moved.getId(), "E123");
+    EXPECT_EQ(moved.getId(), "EQ001");
     EXPECT_EQ(moved.getType(), EquipmentType::Forklift);
     EXPECT_EQ(moved.getName(), "Test Forklift");
     EXPECT_EQ(moved.getStatus(), EquipmentStatus::Active);
     EXPECT_TRUE(moved.getLastPosition().has_value());
     EXPECT_EQ(moved.getPositionHistory().size(), 1);
     
-    // Original should be in an "unknown" state
+    // Original should be in an unknown state
     EXPECT_EQ(original.getStatus(), EquipmentStatus::Unknown);
 }
 
-TEST_F(EquipmentTest, MoveAssignmentWorks) {
-    Equipment original("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, MoveAssignmentWorksCorrectly) {
+    Equipment original("EQ001", EquipmentType::Forklift, "Test Forklift");
     original.setStatus(EquipmentStatus::Active);
     
     Position pos(10.0, 20.0);
     original.recordPosition(pos);
     
-    Equipment target("E456", EquipmentType::Crane, "Test Crane");
+    Equipment target("EQ002", EquipmentType::Crane, "Test Crane");
     target = std::move(original);
     
-    EXPECT_EQ(target.getId(), "E123");
+    EXPECT_EQ(target.getId(), "EQ001");
     EXPECT_EQ(target.getType(), EquipmentType::Forklift);
     EXPECT_EQ(target.getName(), "Test Forklift");
     EXPECT_EQ(target.getStatus(), EquipmentStatus::Active);
     EXPECT_TRUE(target.getLastPosition().has_value());
     EXPECT_EQ(target.getPositionHistory().size(), 1);
     
-    // Original should be in an "unknown" state
+    // Original should be in an unknown state
     EXPECT_EQ(original.getStatus(), EquipmentStatus::Unknown);
 }
 
-TEST_F(EquipmentTest, SelfAssignmentDoesNothing) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, SelfMoveAssignmentDoesNothing) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     equipment.setStatus(EquipmentStatus::Active);
     
     Position pos(10.0, 20.0);
     equipment.recordPosition(pos);
     
-    // Self-assignment
-    equipment = std::move(equipment);
+    equipment = std::move(equipment); // Self-assignment
     
-    EXPECT_EQ(equipment.getId(), "E123");
+    EXPECT_EQ(equipment.getId(), "EQ001");
     EXPECT_EQ(equipment.getType(), EquipmentType::Forklift);
     EXPECT_EQ(equipment.getName(), "Test Forklift");
     EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Active);
+    EXPECT_TRUE(equipment.getLastPosition().has_value());
+    EXPECT_EQ(equipment.getPositionHistory().size(), 1);
 }
 
-TEST_F(EquipmentTest, SetAndGetStatus) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, GetLastPositionReturnsCorrectValue) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
-    equipment.setStatus(EquipmentStatus::Maintenance);
-    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Maintenance);
+    // Initially, last position should be empty
+    EXPECT_FALSE(equipment.getLastPosition().has_value());
+    
+    // Set a position
+    Position pos(10.0, 20.0);
+    equipment.setLastPosition(pos);
+    
+    // Now last position should be set
+    auto lastPos = equipment.getLastPosition();
+    ASSERT_TRUE(lastPos.has_value());
+    EXPECT_DOUBLE_EQ(lastPos->getLatitude(), 10.0);
+    EXPECT_DOUBLE_EQ(lastPos->getLongitude(), 20.0);
+}
+
+TEST_F(EquipmentTest, SetStatusChangesStatus) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
+    
+    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Inactive);
     
     equipment.setStatus(EquipmentStatus::Active);
     EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Active);
+    
+    equipment.setStatus(EquipmentStatus::Maintenance);
+    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Maintenance);
 }
 
-TEST_F(EquipmentTest, SetAndGetName) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, SetNameChangesName) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
+    
+    EXPECT_EQ(equipment.getName(), "Test Forklift");
     
     equipment.setName("New Name");
     EXPECT_EQ(equipment.getName(), "New Name");
 }
 
-TEST_F(EquipmentTest, SetAndGetLastPosition) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, RecordPositionUpdatesHistoryAndStatus) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
-    EXPECT_FALSE(equipment.getLastPosition().has_value());
+    // Initially, history should be empty
+    EXPECT_TRUE(equipment.getPositionHistory().empty());
+    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Inactive);
     
-    Position pos(10.0, 20.0);
-    equipment.setLastPosition(pos);
-    
-    auto lastPos = equipment.getLastPosition();
-    EXPECT_TRUE(lastPos.has_value());
-    EXPECT_DOUBLE_EQ(lastPos->getLatitude(), 10.0);
-    EXPECT_DOUBLE_EQ(lastPos->getLongitude(), 20.0);
-}
-
-TEST_F(EquipmentTest, RecordPositionUpdatesLastPositionAndHistory) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
-    
+    // Record a position
     Position pos1(10.0, 20.0);
     equipment.recordPosition(pos1);
     
-    auto lastPos = equipment.getLastPosition();
-    EXPECT_TRUE(lastPos.has_value());
-    EXPECT_DOUBLE_EQ(lastPos->getLatitude(), 10.0);
-    EXPECT_DOUBLE_EQ(lastPos->getLongitude(), 20.0);
-    
+    // Check history and status
     auto history = equipment.getPositionHistory();
-    EXPECT_EQ(history.size(), 1);
+    ASSERT_EQ(history.size(), 1);
+    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 10.0);
+    EXPECT_DOUBLE_EQ(history[0].getLongitude(), 20.0);
+    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Active);
     
+    // Record another position
     Position pos2(11.0, 21.0);
     equipment.recordPosition(pos2);
     
-    lastPos = equipment.getLastPosition();
-    EXPECT_DOUBLE_EQ(lastPos->getLatitude(), 11.0);
-    EXPECT_DOUBLE_EQ(lastPos->getLongitude(), 21.0);
-    
+    // Check updated history
     history = equipment.getPositionHistory();
-    EXPECT_EQ(history.size(), 2);
-    
-    // Check status is updated to Active
-    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Active);
+    ASSERT_EQ(history.size(), 2);
+    EXPECT_DOUBLE_EQ(history[1].getLatitude(), 11.0);
+    EXPECT_DOUBLE_EQ(history[1].getLongitude(), 21.0);
 }
 
-TEST_F(EquipmentTest, PositionHistorySizeLimit) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, PositionHistorySizeIsLimited) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
     // Set max history size to a small value for testing
     equipment.setMaxHistorySize(3);
     
-    // Add 4 positions
-    for (int i = 0; i < 4; i++) {
+    // Record more positions than the max size
+    for (int i = 0; i < 5; i++) {
         Position pos(i, i);
         equipment.recordPosition(pos);
     }
     
+    // Check that history size is limited
     auto history = equipment.getPositionHistory();
-    EXPECT_EQ(history.size(), 3);  // Should be limited to 3
+    ASSERT_EQ(history.size(), 3);
     
-    // First position should be removed, so history should start with position (1,1)
-    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 1.0);
-    EXPECT_DOUBLE_EQ(history[0].getLongitude(), 1.0);
+    // Check that oldest positions were removed
+    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 2.0);
+    EXPECT_DOUBLE_EQ(history[1].getLatitude(), 3.0);
+    EXPECT_DOUBLE_EQ(history[2].getLatitude(), 4.0);
 }
 
-TEST_F(EquipmentTest, ClearPositionHistory) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, ClearPositionHistoryWorks) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
-    Position pos1(10.0, 20.0);
-    Position pos2(11.0, 21.0);
-    equipment.recordPosition(pos1);
-    equipment.recordPosition(pos2);
+    // Add some positions
+    for (int i = 0; i < 3; i++) {
+        Position pos(i, i);
+        equipment.recordPosition(pos);
+    }
     
-    EXPECT_EQ(equipment.getPositionHistory().size(), 2);
+    EXPECT_EQ(equipment.getPositionHistory().size(), 3);
     
+    // Clear history
     equipment.clearPositionHistory();
     
-    EXPECT_EQ(equipment.getPositionHistory().size(), 0);
+    // Check that history is empty
+    EXPECT_TRUE(equipment.getPositionHistory().empty());
+    
     // Last position should still be available
     EXPECT_TRUE(equipment.getLastPosition().has_value());
 }
 
 TEST_F(EquipmentTest, IsMovingReturnsFalseWithInsufficientData) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
     // No positions
     EXPECT_FALSE(equipment.isMoving());
@@ -211,89 +226,123 @@ TEST_F(EquipmentTest, IsMovingDetectsMovement) {
     using ::testing::Return;
     using namespace std::chrono;
     
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
+    // Create positions with specific timestamps
     auto now = system_clock::now();
-    auto later = now + seconds(10);
+    MockPosition pos1(10.0, 20.0, now - seconds(10));
+    MockPosition pos2(11.0, 21.0, now);
     
-    // Create positions with known timestamps
-    MockPosition pos1(10.0, 20.0, now);
-    MockPosition pos2(10.1, 20.1, later);
+    // Set up mock expectations
+    EXPECT_CALL(pos1, getTimestamp()).WillRepeatedly(Return(now - seconds(10)));
+    EXPECT_CALL(pos2, getTimestamp()).WillRepeatedly(Return(now));
     
-    // Set up expectations for the mock
-    EXPECT_CALL(pos1, getTimestamp()).WillRepeatedly(Return(now));
-    EXPECT_CALL(pos2, getTimestamp()).WillRepeatedly(Return(later));
+    // Distance that would indicate movement (greater than threshold)
+    // Assuming MOVEMENT_SPEED_THRESHOLD is defined in constants.h
+    double distance = MOVEMENT_SPEED_THRESHOLD * 10 + 1.0; // 10 seconds * threshold + buffer
+    EXPECT_CALL(pos2, distanceTo(testing::_)).WillRepeatedly(Return(distance));
     
-    // Set up distance calculation to return 100 meters
-    // This should result in a speed of 10 m/s (100m / 10s)
-    EXPECT_CALL(pos2, distanceTo(::testing::_)).WillRepeatedly(Return(100.0));
-    
+    // Record positions
     equipment.recordPosition(pos1);
     equipment.recordPosition(pos2);
     
-    // If MOVEMENT_SPEED_THRESHOLD is less than 10 m/s, isMoving should return true
+    // Should detect movement
     EXPECT_TRUE(equipment.isMoving());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsFalseForStationaryEquipment) {
+    using ::testing::Return;
+    using namespace std::chrono;
+    
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
+    
+    // Create positions with specific timestamps
+    auto now = system_clock::now();
+    MockPosition pos1(10.0, 20.0, now - seconds(10));
+    MockPosition pos2(10.001, 20.001, now);
+    
+    // Set up mock expectations
+    EXPECT_CALL(pos1, getTimestamp()).WillRepeatedly(Return(now - seconds(10)));
+    EXPECT_CALL(pos2, getTimestamp()).WillRepeatedly(Return(now));
+    
+    // Distance that would indicate no movement (less than threshold)
+    double distance = MOVEMENT_SPEED_THRESHOLD * 10 - 1.0; // 10 seconds * threshold - buffer
+    EXPECT_CALL(pos2, distanceTo(testing::_)).WillRepeatedly(Return(distance));
+    
+    // Record positions
+    equipment.recordPosition(pos1);
+    equipment.recordPosition(pos2);
+    
+    // Should not detect movement
+    EXPECT_FALSE(equipment.isMoving());
 }
 
 TEST_F(EquipmentTest, IsMovingHandlesSmallTimeDifference) {
     using ::testing::Return;
     using namespace std::chrono;
     
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
     
+    // Create positions with very close timestamps
     auto now = system_clock::now();
-    auto almostNow = now + milliseconds(100);  // Only 0.1 seconds later
-    
     MockPosition pos1(10.0, 20.0, now);
-    MockPosition pos2(10.1, 20.1, almostNow);
+    MockPosition pos2(11.0, 21.0, now + milliseconds(100)); // Only 100ms difference
     
+    // Set up mock expectations
     EXPECT_CALL(pos1, getTimestamp()).WillRepeatedly(Return(now));
-    EXPECT_CALL(pos2, getTimestamp()).WillRepeatedly(Return(almostNow));
+    EXPECT_CALL(pos2, getTimestamp()).WillRepeatedly(Return(now + milliseconds(100)));
     
+    // Record positions
     equipment.recordPosition(pos1);
     equipment.recordPosition(pos2);
     
-    // Time difference is less than 1 second, should return false to avoid division by zero
+    // Should not detect movement due to small time difference
     EXPECT_FALSE(equipment.isMoving());
 }
 
-TEST_F(EquipmentTest, ToStringFormatsCorrectly) {
-    Equipment equipment("E123", EquipmentType::Forklift, "Test Forklift");
+TEST_F(EquipmentTest, ToStringReturnsCorrectFormat) {
+    Equipment equipment("EQ001", EquipmentType::Forklift, "Test Forklift");
+    equipment.setStatus(EquipmentStatus::Active);
     
     std::string result = equipment.toString();
     
-    EXPECT_THAT(result, ::testing::HasSubstr("Equipment(id=E123"));
+    EXPECT_THAT(result, ::testing::HasSubstr("Equipment(id=EQ001"));
     EXPECT_THAT(result, ::testing::HasSubstr("name=Test Forklift"));
     EXPECT_THAT(result, ::testing::HasSubstr("type=Forklift"));
-    EXPECT_THAT(result, ::testing::HasSubstr("status=Inactive"));
+    EXPECT_THAT(result, ::testing::HasSubstr("status=Active"));
+}
+
+TEST_F(EquipmentTest, ToStringHandlesAllEquipmentTypes) {
+    Equipment forklift("EQ001", EquipmentType::Forklift, "Test");
+    Equipment crane("EQ002", EquipmentType::Crane, "Test");
+    Equipment bulldozer("EQ003", EquipmentType::Bulldozer, "Test");
+    Equipment excavator("EQ004", EquipmentType::Excavator, "Test");
+    Equipment truck("EQ005", EquipmentType::Truck, "Test");
+    Equipment other("EQ006", static_cast<EquipmentType>(99), "Test"); // Unknown type
     
-    equipment.setStatus(EquipmentStatus::Maintenance);
-    result = equipment.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("status=Maintenance"));
+    EXPECT_THAT(forklift.toString(), ::testing::HasSubstr("type=Forklift"));
+    EXPECT_THAT(crane.toString(), ::testing::HasSubstr("type=Crane"));
+    EXPECT_THAT(bulldozer.toString(), ::testing::HasSubstr("type=Bulldozer"));
+    EXPECT_THAT(excavator.toString(), ::testing::HasSubstr("type=Excavator"));
+    EXPECT_THAT(truck.toString(), ::testing::HasSubstr("type=Truck"));
+    EXPECT_THAT(other.toString(), ::testing::HasSubstr("type=Other"));
+}
+
+TEST_F(EquipmentTest, ToStringHandlesAllStatusTypes) {
+    Equipment active("EQ001", EquipmentType::Forklift, "Test");
+    Equipment inactive("EQ002", EquipmentType::Forklift, "Test");
+    Equipment maintenance("EQ003", EquipmentType::Forklift, "Test");
+    Equipment unknown("EQ004", EquipmentType::Forklift, "Test");
     
-    Equipment crane("C456", EquipmentType::Crane, "Test Crane");
-    result = crane.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("type=Crane"));
+    active.setStatus(EquipmentStatus::Active);
+    inactive.setStatus(EquipmentStatus::Inactive);
+    maintenance.setStatus(EquipmentStatus::Maintenance);
+    unknown.setStatus(static_cast<EquipmentStatus>(99)); // Unknown status
     
-    Equipment bulldozer("B789", EquipmentType::Bulldozer, "Test Bulldozer");
-    result = bulldozer.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("type=Bulldozer"));
-    
-    Equipment excavator("E101", EquipmentType::Excavator, "Test Excavator");
-    result = excavator.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("type=Excavator"));
-    
-    Equipment truck("T202", EquipmentType::Truck, "Test Truck");
-    result = truck.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("type=Truck"));
-    
-    Equipment other("O303", static_cast<EquipmentType>(99), "Test Other");
-    result = other.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("type=Other"));
-    
-    other.setStatus(static_cast<EquipmentStatus>(99));
-    result = other.toString();
-    EXPECT_THAT(result, ::testing::HasSubstr("status=Unknown"));
+    EXPECT_THAT(active.toString(), ::testing::HasSubstr("status=Active"));
+    EXPECT_THAT(inactive.toString(), ::testing::HasSubstr("status=Inactive"));
+    EXPECT_THAT(maintenance.toString(), ::testing::HasSubstr("status=Maintenance"));
+    EXPECT_THAT(unknown.toString(), ::testing::HasSubstr("status=Unknown"));
 }
 
 } // namespace equipment_tracker
