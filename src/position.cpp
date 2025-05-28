@@ -25,40 +25,52 @@ namespace equipment_tracker
 
     double Position::distanceTo(const Position &other) const
     {
+        // Input validation
+        if (std::abs(latitude_) > 90.0 || std::abs(other.latitude_) > 90.0) {
+            throw std::invalid_argument("Latitude must be between -90 and 90 degrees");
+        }
+        if (std::abs(longitude_) > 180.0 || std::abs(other.longitude_) > 180.0) {
+            throw std::invalid_argument("Longitude must be between -180 and 180 degrees");
+        }
+        if (EARTH_RADIUS_METERS <= 0.0) {
+            throw std::runtime_error("Earth radius must be positive");
+        }
+
         // Early return for same position (pointer comparison)
-        if (this == &other)
-        {
+        if (this == &other) {
             return 0.0;
         }
 
-        // Early return for identical coordinates (with small epsilon for floating point comparison)
-        const double epsilon = 1e-9;
+        // Early return for identical coordinates (using appropriate epsilon for GPS precision)
+        const double epsilon = 1e-7; // ~1cm precision at equator
         if (std::abs(latitude_ - other.latitude_) < epsilon &&
-            std::abs(longitude_ - other.longitude_) < epsilon)
-        {
+            std::abs(longitude_ - other.longitude_) < epsilon) {
             return 0.0;
         }
 
         // Convert latitude and longitude from degrees to radians
         const double lat1_rad = latitude_ * M_PI / 180.0;
         const double lat2_rad = other.latitude_ * M_PI / 180.0;
+        const double lon1_rad = longitude_ * M_PI / 180.0;
+        const double lon2_rad = other.longitude_ * M_PI / 180.0;
 
         // Calculate differences in radians
         const double dlat = lat2_rad - lat1_rad;
-        const double lon1_rad = longitude_ * M_PI / 180.0;
-        const double lon2_rad = other.longitude_ * M_PI / 180.0;
         const double dlon = lon2_rad - lon1_rad;
 
-        // Pre-calculate sine values to avoid redundant calculations
+        // Haversine formula - numerically stable implementation
         const double sin_dlat_half = std::sin(dlat * 0.5);
         const double sin_dlon_half = std::sin(dlon * 0.5);
-
-        // Haversine formula - optimized version
+        
         const double a = sin_dlat_half * sin_dlat_half +
                          std::cos(lat1_rad) * std::cos(lat2_rad) *
                              sin_dlon_half * sin_dlon_half;
 
-        const double c = 2.0 * std::atan2(std::sqrt(std::clamp(a, 0.0, 1.0)), std::sqrt(std::clamp(1.0 - a, 0.0, 1.0)));
+        // Use numerically stable form of atan2 for small distances
+        // This avoids the need for clamping which can introduce errors
+        const double sqrt_a = std::sqrt(a);
+        const double sqrt_1_minus_a = std::sqrt(1.0 - a);
+        const double c = 2.0 * std::atan2(sqrt_a, sqrt_1_minus_a);
 
         // Distance in meters
         return EARTH_RADIUS_METERS * c;
