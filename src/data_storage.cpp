@@ -478,7 +478,7 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by status
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getStatus() == status)
             {
@@ -497,7 +497,7 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by type
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getType() == type)
             {
@@ -512,14 +512,13 @@ namespace equipment_tracker
         double lat1, double lon1,
         double lat2, double lon2)
     {
-
         std::vector<Equipment> result;
 
         // Get all equipment
         auto all_equipment = getAllEquipment();
 
         // Filter by area
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             auto position = equipment.getLastPosition();
 
