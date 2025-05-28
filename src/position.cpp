@@ -47,6 +47,14 @@ namespace equipment_tracker
         return EARTH_RADIUS_METERS * c;
     }
 
+    bool Position::isWithinRadius(const Position &other, double radius_meters) const
+    {
+        if (radius_meters < 0.0) {
+            throw std::invalid_argument("Radius must be non-negative");
+        }
+        return distanceTo(other) <= radius_meters;
+    }
+
     std::string Position::toString() const
     {
         std::stringstream ss;
