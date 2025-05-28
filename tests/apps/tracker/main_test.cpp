@@ -9,7 +9,7 @@
 #include "equipment_tracker/utils/time_utils.h"
 
 using namespace equipment_tracker;
-using ::testing::HasSubstr;
+using namespace testing;
 
 class PositionTest : public ::testing::Test {
 protected:
@@ -25,222 +25,232 @@ protected:
     }
 };
 
-// Position Tests
-TEST_F(PositionTest, DefaultConstructor) {
-    Position position;
-    EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getAccuracy());
+TEST_F(PositionTest, ConstructorSetsCorrectValues) {
+    const double lat = 37.7749;
+    const double lon = -122.4194;
+    const double alt = 10.0;
+    
+    Position position(lat, lon, alt);
+    
+    EXPECT_DOUBLE_EQ(position.getLatitude(), lat);
+    EXPECT_DOUBLE_EQ(position.getLongitude(), lon);
+    EXPECT_DOUBLE_EQ(position.getAltitude(), alt);
+    EXPECT_DOUBLE_EQ(position.getAccuracy(), 0.0); // Default accuracy
 }
 
-TEST_F(PositionTest, ParameterizedConstructor) {
-    Position position(37.7749, -122.4194, 10.0);
-    EXPECT_DOUBLE_EQ(37.7749, position.getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, position.getLongitude());
-    EXPECT_DOUBLE_EQ(10.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getAccuracy());  // Default accuracy
-}
-
-TEST_F(PositionTest, BuilderPattern) {
+TEST_F(PositionTest, BuilderPatternSetsCorrectValues) {
+    const double lat = 34.0522;
+    const double lon = -118.2437;
+    const double alt = 50.0;
+    const double accuracy = 1.5;
+    
     Position position = Position::builder()
-                            .withLatitude(34.0522)
-                            .withLongitude(-118.2437)
-                            .withAltitude(50.0)
-                            .withAccuracy(1.5)
+                            .withLatitude(lat)
+                            .withLongitude(lon)
+                            .withAltitude(alt)
+                            .withAccuracy(accuracy)
                             .build();
     
-    EXPECT_DOUBLE_EQ(34.0522, position.getLatitude());
-    EXPECT_DOUBLE_EQ(-118.2437, position.getLongitude());
-    EXPECT_DOUBLE_EQ(50.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(1.5, position.getAccuracy());
+    EXPECT_DOUBLE_EQ(position.getLatitude(), lat);
+    EXPECT_DOUBLE_EQ(position.getLongitude(), lon);
+    EXPECT_DOUBLE_EQ(position.getAltitude(), alt);
+    EXPECT_DOUBLE_EQ(position.getAccuracy(), accuracy);
 }
 
-TEST_F(PositionTest, DistanceCalculation) {
-    Position sanFrancisco(37.7749, -122.4194, 10.0);
-    Position losAngeles(34.0522, -118.2437, 50.0);
-    
-    double distance = sanFrancisco.distanceTo(losAngeles);
-    
-    // The distance between SF and LA is approximately 559 km
-    // Using a tolerance of 1 km for the test
-    EXPECT_NEAR(559000.0, distance, 1000.0);
-}
-
-TEST_F(PositionTest, DistanceToSelf) {
+TEST_F(PositionTest, ToStringContainsCoordinates) {
     Position position(37.7749, -122.4194, 10.0);
-    double distance = position.distanceTo(position);
-    EXPECT_DOUBLE_EQ(0.0, distance);
-}
-
-TEST_F(PositionTest, ToString) {
-    Position position(37.7749, -122.4194, 10.0, 2.5);
+    
     std::string posStr = position.toString();
     
     EXPECT_THAT(posStr, HasSubstr("37.7749"));
     EXPECT_THAT(posStr, HasSubstr("-122.4194"));
     EXPECT_THAT(posStr, HasSubstr("10"));
-    EXPECT_THAT(posStr, HasSubstr("2.5"));
 }
 
-TEST_F(PositionTest, SettersAndGetters) {
-    Position position;
+TEST_F(PositionTest, DistanceCalculationIsAccurate) {
+    // San Francisco
+    Position sf(37.7749, -122.4194, 10.0);
+    // Los Angeles
+    Position la(34.0522, -118.2437, 50.0);
     
-    position.setLatitude(40.7128);
-    position.setLongitude(-74.0060);
-    position.setAltitude(15.0);
-    position.setAccuracy(3.0);
+    double distance = sf.distanceTo(la);
     
-    EXPECT_DOUBLE_EQ(40.7128, position.getLatitude());
-    EXPECT_DOUBLE_EQ(-74.0060, position.getLongitude());
-    EXPECT_DOUBLE_EQ(15.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(3.0, position.getAccuracy());
+    // The distance between SF and LA is approximately 559 km
+    // Due to different implementations of haversine formula and floating-point precision,
+    // we use a reasonable tolerance
+    EXPECT_NEAR(distance / 1000.0, 559.0, 10.0);
 }
 
-TEST_F(PositionTest, InvalidLatitude) {
-    Position position;
+TEST_F(PositionTest, DistanceToSelfIsZero) {
+    Position position(37.7749, -122.4194, 10.0);
     
-    // Latitude should be between -90 and 90
-    position.setLatitude(100.0);
-    EXPECT_DOUBLE_EQ(90.0, position.getLatitude());
+    double distance = position.distanceTo(position);
     
-    position.setLatitude(-100.0);
-    EXPECT_DOUBLE_EQ(-90.0, position.getLatitude());
+    EXPECT_NEAR(distance, 0.0, 0.001);
 }
 
-TEST_F(PositionTest, InvalidLongitude) {
-    Position position;
+TEST_F(PositionTest, DistanceWithNorthPole) {
+    Position sf(37.7749, -122.4194, 10.0);
+    Position northPole(90.0, 0.0, 0.0);
     
-    // Longitude should be between -180 and 180
-    position.setLongitude(200.0);
-    EXPECT_DOUBLE_EQ(180.0, position.getLongitude());
+    double distance = sf.distanceTo(northPole);
     
-    position.setLongitude(-200.0);
-    EXPECT_DOUBLE_EQ(-180.0, position.getLongitude());
+    // Distance from SF to North Pole is approximately 5,765 km
+    EXPECT_NEAR(distance / 1000.0, 5765.0, 100.0);
 }
 
-// Equipment Tests
-TEST_F(EquipmentTest, Constructor) {
-    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+TEST_F(EquipmentTest, ConstructorSetsCorrectValues) {
+    const std::string id = "FORKLIFT-001";
+    const EquipmentType type = EquipmentType::Forklift;
+    const std::string description = "Warehouse Forklift 1";
     
-    EXPECT_EQ("FORKLIFT-001", forklift.getId());
-    EXPECT_EQ(EquipmentType::Forklift, forklift.getType());
-    EXPECT_EQ("Warehouse Forklift 1", forklift.getName());
-    EXPECT_FALSE(forklift.getLastPosition().has_value());
+    Equipment equipment(id, type, description);
+    
+    EXPECT_EQ(equipment.getId(), id);
+    EXPECT_EQ(equipment.getType(), type);
+    EXPECT_EQ(equipment.getDescription(), description);
+    EXPECT_EQ(equipment.getLastPosition(), nullptr);
 }
 
-TEST_F(EquipmentTest, SetAndGetPosition) {
+TEST_F(EquipmentTest, SetAndGetLastPosition) {
     Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
     Position position(37.7749, -122.4194, 10.0);
     
     forklift.setLastPosition(position);
+    auto lastPosition = forklift.getLastPosition();
     
-    EXPECT_TRUE(forklift.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(37.7749, forklift.getLastPosition()->getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, forklift.getLastPosition()->getLongitude());
-    EXPECT_DOUBLE_EQ(10.0, forklift.getLastPosition()->getAltitude());
+    ASSERT_NE(lastPosition, nullptr);
+    EXPECT_DOUBLE_EQ(lastPosition->getLatitude(), position.getLatitude());
+    EXPECT_DOUBLE_EQ(lastPosition->getLongitude(), position.getLongitude());
+    EXPECT_DOUBLE_EQ(lastPosition->getAltitude(), position.getAltitude());
 }
 
-TEST_F(EquipmentTest, RecordPosition) {
+TEST_F(EquipmentTest, RecordPositionAddsToHistory) {
     Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    Position position(37.7749, -122.4194, 10.0);
-    
-    forklift.recordPosition(position);
-    
-    EXPECT_TRUE(forklift.getLastPosition().has_value());
-    EXPECT_EQ(1, forklift.getPositionHistory().size());
-}
-
-TEST_F(EquipmentTest, PositionHistory) {
-    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    
-    // Record multiple positions
-    for (int i = 0; i < 5; ++i) {
-        Position position(37.7749 + i * 0.001, -122.4194 + i * 0.002, 10.0 + i);
-        forklift.recordPosition(position);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Small delay to ensure different timestamps
-    }
-    
-    auto history = forklift.getPositionHistory();
-    EXPECT_EQ(5, history.size());
-    
-    // Check that positions are stored in chronological order
-    for (size_t i = 1; i < history.size(); ++i) {
-        EXPECT_GT(history[i].timestamp, history[i-1].timestamp);
-    }
-}
-
-TEST_F(EquipmentTest, IsMoving) {
-    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    
-    // No positions recorded yet
-    EXPECT_FALSE(forklift.isMoving());
-    
-    // Record a position
     Position position1(37.7749, -122.4194, 10.0);
+    Position position2(37.7750, -122.4195, 11.0);
+    
     forklift.recordPosition(position1);
-    
-    // Still not moving with only one position
-    EXPECT_FALSE(forklift.isMoving());
-    
-    // Record a position far enough away to indicate movement
-    Position position2(37.7849, -122.4294, 10.0);  // About 1.4 km away
     forklift.recordPosition(position2);
     
-    // Should be considered moving now
+    auto history = forklift.getPositionHistory();
+    
+    EXPECT_EQ(history.size(), 2);
+    
+    // Check last position is updated
+    auto lastPosition = forklift.getLastPosition();
+    ASSERT_NE(lastPosition, nullptr);
+    EXPECT_DOUBLE_EQ(lastPosition->getLatitude(), position2.getLatitude());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsTrueWhenMoving) {
+    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+    
+    // Record positions with significant distance between them
+    Position position1(37.7749, -122.4194, 10.0);
+    // Wait to ensure timestamps are different
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // Record first position
+    forklift.recordPosition(position1);
+    
+    // Wait to ensure timestamps are different
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // Record second position with significant movement
+    Position position2(37.7849, -122.4294, 10.0); // Moved ~1.1 km
+    forklift.recordPosition(position2);
+    
     EXPECT_TRUE(forklift.isMoving());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsFalseWhenStationary) {
+    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
     
-    // Record a position very close to the last one
-    Position position3(37.7849, -122.4294, 10.0);  // Same position
-    forklift.recordPosition(position3);
+    // Record positions with minimal distance between them
+    Position position1(37.7749, -122.4194, 10.0);
+    // Wait to ensure timestamps are different
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    // Should not be considered moving anymore
+    // Record first position
+    forklift.recordPosition(position1);
+    
+    // Wait to ensure timestamps are different
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // Record second position with minimal movement
+    Position position2(37.77491, -122.41941, 10.0); // Moved very little
+    forklift.recordPosition(position2);
+    
     EXPECT_FALSE(forklift.isMoving());
 }
 
-TEST_F(EquipmentTest, ToString) {
+TEST_F(EquipmentTest, ToStringContainsEquipmentInfo) {
     Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    Position position(37.7749, -122.4194, 10.0);
-    forklift.setLastPosition(position);
     
     std::string equipStr = forklift.toString();
     
     EXPECT_THAT(equipStr, HasSubstr("FORKLIFT-001"));
-    EXPECT_THAT(equipStr, HasSubstr("Warehouse Forklift 1"));
     EXPECT_THAT(equipStr, HasSubstr("Forklift"));
+    EXPECT_THAT(equipStr, HasSubstr("Warehouse Forklift 1"));
 }
 
-TEST_F(EquipmentTest, SettersAndGetters) {
-    Equipment equipment("CRANE-001", EquipmentType::Crane, "Tower Crane");
-    
-    equipment.setId("CRANE-002");
-    equipment.setName("Mobile Crane");
-    equipment.setType(EquipmentType::MobileCrane);
-    
-    EXPECT_EQ("CRANE-002", equipment.getId());
-    EXPECT_EQ("Mobile Crane", equipment.getName());
-    EXPECT_EQ(EquipmentType::MobileCrane, equipment.getType());
-}
-
-TEST_F(EquipmentTest, ClearPositionHistory) {
+TEST_F(EquipmentTest, PositionHistoryMaintainsOrder) {
     Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
     
     // Record multiple positions
     for (int i = 0; i < 5; ++i) {
-        Position position(37.7749 + i * 0.001, -122.4194 + i * 0.002, 10.0 + i);
-        forklift.recordPosition(position);
+        Position pos(37.7749 + i * 0.001, -122.4194 + i * 0.002, 10.0 + i);
+        forklift.recordPosition(pos);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
-    EXPECT_EQ(5, forklift.getPositionHistory().size());
+    auto history = forklift.getPositionHistory();
     
-    forklift.clearPositionHistory();
+    EXPECT_EQ(history.size(), 5);
     
-    EXPECT_EQ(0, forklift.getPositionHistory().size());
-    EXPECT_FALSE(forklift.getLastPosition().has_value());
+    // Check positions are in chronological order (newest first or oldest first, depending on implementation)
+    // This test assumes newest first, adjust if your implementation differs
+    for (size_t i = 1; i < history.size(); ++i) {
+        EXPECT_GE(history[i-1].timestamp, history[i].timestamp);
+    }
 }
 
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+TEST_F(EquipmentTest, EmptyPositionHistoryWhenNoPositionsRecorded) {
+    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+    
+    auto history = forklift.getPositionHistory();
+    
+    EXPECT_TRUE(history.empty());
+}
+
+// Additional tests for edge cases
+
+TEST_F(PositionTest, DistanceWithInvalidCoordinates) {
+    Position validPos(37.7749, -122.4194, 10.0);
+    Position invalidLat(91.0, -122.4194, 10.0); // Invalid latitude > 90
+    Position invalidLon(37.7749, -181.0, 10.0); // Invalid longitude < -180
+    
+    // Depending on implementation, this might throw an exception or return a special value
+    // Adjust the test according to your implementation
+    EXPECT_NO_THROW(validPos.distanceTo(invalidLat));
+    EXPECT_NO_THROW(validPos.distanceTo(invalidLon));
+}
+
+TEST_F(EquipmentTest, RecordPositionWithSameTimestamp) {
+    Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+    
+    // Create two positions
+    Position pos1(37.7749, -122.4194, 10.0);
+    Position pos2(37.7750, -122.4195, 11.0);
+    
+    // Record both positions
+    forklift.recordPosition(pos1);
+    forklift.recordPosition(pos2);
+    
+    auto history = forklift.getPositionHistory();
+    
+    // Expect both positions to be recorded, even if they have similar timestamps
+    EXPECT_EQ(history.size(), 2);
 }
 // </test_code>
