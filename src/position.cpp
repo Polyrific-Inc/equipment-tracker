@@ -1,4 +1,3 @@
-```
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -90,4 +89,3 @@ namespace equipment_tracker
     }
 
 } // namespace equipment_tracker
-```
