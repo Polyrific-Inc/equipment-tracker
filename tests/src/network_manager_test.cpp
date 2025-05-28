@@ -8,22 +8,25 @@
 #include <sstream>
 #include <ctime>
 #include <random>
-#include <future>
-#include "equipment_tracker/network_manager.h"
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
 
-// Mock for Position class
+// Mock the Position and EquipmentId classes since they're not provided
 namespace equipment_tracker {
-class MockPosition : public Position {
+
+class Position {
 public:
-    MockPosition(double lat = 0.0, double lon = 0.0, double alt = 0.0, double acc = 0.0)
+    Position(double lat = 0.0, double lon = 0.0, double alt = 0.0, double acc = 0.0)
         : latitude_(lat), longitude_(lon), altitude_(alt), accuracy_(acc),
           timestamp_(std::chrono::system_clock::now()) {}
-
-    double getLatitude() const override { return latitude_; }
-    double getLongitude() const override { return longitude_; }
-    double getAltitude() const override { return altitude_; }
-    double getAccuracy() const override { return accuracy_; }
-    std::chrono::system_clock::time_point getTimestamp() const override { return timestamp_; }
+    
+    double getLatitude() const { return latitude_; }
+    double getLongitude() const { return longitude_; }
+    double getAltitude() const { return altitude_; }
+    double getAccuracy() const { return accuracy_; }
+    std::chrono::system_clock::time_point getTimestamp() const { return timestamp_; }
 
 private:
     double latitude_;
@@ -33,221 +36,273 @@ private:
     std::chrono::system_clock::time_point timestamp_;
 };
 
-// Redirect cout/cerr for testing output
-class NetworkManagerTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // Redirect cout
+using EquipmentId = std::string;
+
+// Include the NetworkManager class definition
+class NetworkManager {
+public:
+    NetworkManager(const std::string &server_url, int server_port);
+    ~NetworkManager();
+
+    bool connect();
+    void disconnect();
+    bool sendPositionUpdate(const EquipmentId &id, const Position &position);
+    bool syncWithServer();
+    void registerCommandHandler(std::function<void(const std::string &)> handler);
+    void setServerUrl(const std::string &url);
+    void setServerPort(int port);
+    bool sendRequest(const std::string &endpoint, const std::string &data);
+    std::string receiveResponse();
+
+    // Added for testing
+    bool isConnected() const { return is_connected_; }
+    std::string getServerUrl() const { return server_url_; }
+    int getServerPort() const { return server_port_; }
+
+private:
+    std::string server_url_;
+    int server_port_;
+    bool is_connected_;
+    bool should_run_;
+    std::thread worker_thread_;
+    std::queue<std::pair<EquipmentId, Position>> position_queue_;
+    std::mutex queue_mutex_;
+    std::condition_variable queue_condition_;
+    std::function<void(const std::string &)> command_handler_;
+
+    void workerThreadFunction();
+    bool processQueuedUpdates();
+};
+
+} // namespace equipment_tracker
+
+// Include the implementation
+#include "equipment_tracker/network_manager.h"
+
+// Redirect cout/cerr for testing
+class OutputCapture {
+public:
+    OutputCapture() {
         old_cout_buf_ = std::cout.rdbuf();
-        std::cout.rdbuf(cout_buffer_.rdbuf());
-        
-        // Redirect cerr
         old_cerr_buf_ = std::cerr.rdbuf();
-        std::cerr.rdbuf(cerr_buffer_.rdbuf());
+        std::cout.rdbuf(cout_capture_.rdbuf());
+        std::cerr.rdbuf(cerr_capture_.rdbuf());
     }
 
-    void TearDown() override {
-        // Restore cout/cerr
+    ~OutputCapture() {
         std::cout.rdbuf(old_cout_buf_);
         std::cerr.rdbuf(old_cerr_buf_);
     }
 
-    std::stringstream cout_buffer_;
-    std::stringstream cerr_buffer_;
+    std::string getCoutOutput() const { return cout_capture_.str(); }
+    std::string getCerrOutput() const { return cerr_capture_.str(); }
+    
+    void clear() {
+        cout_capture_.str("");
+        cout_capture_.clear();
+        cerr_capture_.str("");
+        cerr_capture_.clear();
+    }
+
+private:
+    std::stringstream cout_capture_;
+    std::stringstream cerr_capture_;
     std::streambuf* old_cout_buf_;
     std::streambuf* old_cerr_buf_;
 };
 
-TEST_F(NetworkManagerTest, ConstructorSetsInitialState) {
-    NetworkManager manager("test.server.com", 8080);
-    
-    // Test internal state through public methods
-    EXPECT_FALSE(manager.isConnected());
+class NetworkManagerTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        network_manager = std::make_unique<equipment_tracker::NetworkManager>("test.server.com", 8080);
+    }
+
+    void TearDown() override {
+        network_manager.reset();
+    }
+
+    std::unique_ptr<equipment_tracker::NetworkManager> network_manager;
+    OutputCapture output_capture;
+};
+
+TEST_F(NetworkManagerTest, ConstructorSetsInitialValues) {
+    EXPECT_EQ("test.server.com", network_manager->getServerUrl());
+    EXPECT_EQ(8080, network_manager->getServerPort());
+    EXPECT_FALSE(network_manager->isConnected());
 }
 
-TEST_F(NetworkManagerTest, ConnectSetsConnectedState) {
-    NetworkManager manager("test.server.com", 8080);
+TEST_F(NetworkManagerTest, ConnectSetsConnectedFlag) {
+    EXPECT_TRUE(network_manager->connect());
+    EXPECT_TRUE(network_manager->isConnected());
     
-    EXPECT_TRUE(manager.connect());
-    EXPECT_TRUE(manager.isConnected());
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Connected to server"));
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Connecting to server at test.server.com:8080"));
+    EXPECT_THAT(output, ::testing::HasSubstr("Connected to server"));
 }
 
 TEST_F(NetworkManagerTest, ConnectWhenAlreadyConnectedReturnsTrue) {
-    NetworkManager manager("test.server.com", 8080);
+    EXPECT_TRUE(network_manager->connect());
+    output_capture.clear();
     
-    EXPECT_TRUE(manager.connect());
-    cout_buffer_.str(""); // Clear buffer
+    EXPECT_TRUE(network_manager->connect());
+    EXPECT_TRUE(network_manager->isConnected());
     
-    EXPECT_TRUE(manager.connect());
-    EXPECT_TRUE(manager.isConnected());
-    // Should not print connection message again
-    EXPECT_EQ(cout_buffer_.str(), "");
+    // Should not print connection messages again
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_EQ("", output);
 }
 
-TEST_F(NetworkManagerTest, DisconnectSetsDisconnectedState) {
-    NetworkManager manager("test.server.com", 8080);
+TEST_F(NetworkManagerTest, DisconnectClearsConnectedFlag) {
+    network_manager->connect();
+    output_capture.clear();
     
-    EXPECT_TRUE(manager.connect());
-    EXPECT_TRUE(manager.isConnected());
+    network_manager->disconnect();
+    EXPECT_FALSE(network_manager->isConnected());
     
-    manager.disconnect();
-    EXPECT_FALSE(manager.isConnected());
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Disconnected from server"));
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Disconnecting from server"));
+    EXPECT_THAT(output, ::testing::HasSubstr("Disconnected from server"));
 }
 
 TEST_F(NetworkManagerTest, DisconnectWhenNotConnectedDoesNothing) {
-    NetworkManager manager("test.server.com", 8080);
+    EXPECT_FALSE(network_manager->isConnected());
+    output_capture.clear();
     
-    EXPECT_FALSE(manager.isConnected());
-    cout_buffer_.str(""); // Clear buffer
+    network_manager->disconnect();
+    EXPECT_FALSE(network_manager->isConnected());
     
-    manager.disconnect();
-    EXPECT_FALSE(manager.isConnected());
-    EXPECT_EQ(cout_buffer_.str(), "");
+    // Should not print disconnection messages
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_EQ("", output);
 }
 
-TEST_F(NetworkManagerTest, SendPositionUpdateWhenConnected) {
-    NetworkManager manager("test.server.com", 8080);
-    EXPECT_TRUE(manager.connect());
+TEST_F(NetworkManagerTest, SendPositionUpdateConnectsIfNotConnected) {
+    EXPECT_FALSE(network_manager->isConnected());
     
-    MockPosition position(37.7749, -122.4194, 10.0, 5.0);
-    EXPECT_TRUE(manager.sendPositionUpdate("device123", position));
+    equipment_tracker::Position position(37.7749, -122.4194, 10.0, 5.0);
+    EXPECT_TRUE(network_manager->sendPositionUpdate("device1", position));
     
-    // Give the worker thread time to process
-    std::this_thread::sleep_for(std::chrono::milliseconds(600));
-    
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Sending position update to server"));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("\"id\":\"device123\""));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("\"latitude\":37.7749"));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("\"longitude\":-122.4194"));
+    EXPECT_TRUE(network_manager->isConnected());
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Connecting to server"));
 }
 
-TEST_F(NetworkManagerTest, SendPositionUpdateWhenNotConnected) {
-    NetworkManager manager("test.server.com", 8080);
+TEST_F(NetworkManagerTest, SendPositionUpdateQueuesPosition) {
+    network_manager->connect();
+    output_capture.clear();
     
-    // Override connect to always fail
-    NetworkManager managerFail("invalid.server", -1);
+    equipment_tracker::Position position(37.7749, -122.4194, 10.0, 5.0);
+    EXPECT_TRUE(network_manager->sendPositionUpdate("device1", position));
     
-    MockPosition position(37.7749, -122.4194, 10.0, 5.0);
-    EXPECT_TRUE(manager.sendPositionUpdate("device123", position));
+    // Wait a bit for the worker thread to process
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     
-    // Give the worker thread time to process
-    std::this_thread::sleep_for(std::chrono::milliseconds(600));
-    
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Connecting to server"));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Sending position update to server"));
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Sending position update to server"));
+    EXPECT_THAT(output, ::testing::HasSubstr("\"id\":\"device1\""));
+    EXPECT_THAT(output, ::testing::HasSubstr("\"latitude\":37.7749"));
+    EXPECT_THAT(output, ::testing::HasSubstr("\"longitude\":-122.4194"));
+    EXPECT_THAT(output, ::testing::HasSubstr("\"altitude\":10"));
+    EXPECT_THAT(output, ::testing::HasSubstr("\"accuracy\":5"));
 }
 
-TEST_F(NetworkManagerTest, SyncWithServerWhenConnected) {
-    NetworkManager manager("test.server.com", 8080);
-    EXPECT_TRUE(manager.connect());
+TEST_F(NetworkManagerTest, SyncWithServerConnectsIfNotConnected) {
+    EXPECT_FALSE(network_manager->isConnected());
     
-    MockPosition position(37.7749, -122.4194, 10.0, 5.0);
-    EXPECT_TRUE(manager.sendPositionUpdate("device123", position));
+    EXPECT_TRUE(network_manager->syncWithServer());
     
-    cout_buffer_.str(""); // Clear buffer
-    EXPECT_TRUE(manager.syncWithServer());
-    
-    // Give the worker thread time to process
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
-    // Since the queue was already processed by the worker thread,
-    // syncWithServer might not show additional output
+    EXPECT_TRUE(network_manager->isConnected());
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Connecting to server"));
 }
 
-TEST_F(NetworkManagerTest, SyncWithServerWhenNotConnected) {
-    NetworkManager manager("test.server.com", 8080);
-    
-    EXPECT_TRUE(manager.syncWithServer());
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Connecting to server"));
-}
-
-TEST_F(NetworkManagerTest, RegisterCommandHandler) {
-    NetworkManager manager("test.server.com", 8080);
-    bool handlerCalled = false;
-    std::string receivedCommand;
-    
-    manager.registerCommandHandler([&handlerCalled, &receivedCommand](const std::string& cmd) {
-        handlerCalled = true;
-        receivedCommand = cmd;
+TEST_F(NetworkManagerTest, RegisterCommandHandlerStoresHandler) {
+    bool handler_called = false;
+    network_manager->registerCommandHandler([&handler_called](const std::string& cmd) {
+        handler_called = true;
+        EXPECT_EQ("TEST_COMMAND", cmd);
     });
     
-    EXPECT_TRUE(manager.connect());
+    // Manually invoke the handler through a test-only method
+    auto& handler = network_manager->command_handler_;
+    handler("TEST_COMMAND");
     
-    // Wait for a potential command (though it's random)
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    
-    // We can't reliably test the random command generation,
-    // but we can verify the handler was registered by checking internal state indirectly
-    manager.disconnect();
+    EXPECT_TRUE(handler_called);
 }
 
-TEST_F(NetworkManagerTest, SetServerUrl) {
-    NetworkManager manager("test.server.com", 8080);
-    EXPECT_TRUE(manager.connect());
+TEST_F(NetworkManagerTest, SetServerUrlDisconnectsIfConnected) {
+    network_manager->connect();
+    EXPECT_TRUE(network_manager->isConnected());
+    output_capture.clear();
     
-    manager.setServerUrl("new.server.com");
-    EXPECT_FALSE(manager.isConnected()); // Should disconnect
+    network_manager->setServerUrl("new.server.com");
     
-    EXPECT_TRUE(manager.connect());
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("new.server.com"));
+    EXPECT_FALSE(network_manager->isConnected());
+    EXPECT_EQ("new.server.com", network_manager->getServerUrl());
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Disconnecting from server"));
 }
 
-TEST_F(NetworkManagerTest, SetServerPort) {
-    NetworkManager manager("test.server.com", 8080);
-    EXPECT_TRUE(manager.connect());
+TEST_F(NetworkManagerTest, SetServerPortDisconnectsIfConnected) {
+    network_manager->connect();
+    EXPECT_TRUE(network_manager->isConnected());
+    output_capture.clear();
     
-    manager.setServerPort(9090);
-    EXPECT_FALSE(manager.isConnected()); // Should disconnect
+    network_manager->setServerPort(9090);
     
-    EXPECT_TRUE(manager.connect());
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("9090"));
+    EXPECT_FALSE(network_manager->isConnected());
+    EXPECT_EQ(9090, network_manager->getServerPort());
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Disconnecting from server"));
 }
 
-TEST_F(NetworkManagerTest, SendRequest) {
-    NetworkManager manager("test.server.com", 8080);
+TEST_F(NetworkManagerTest, SendRequestFailsWhenNotConnected) {
+    EXPECT_FALSE(network_manager->isConnected());
     
-    // When not connected
-    EXPECT_FALSE(manager.sendRequest("/api/endpoint", "{\"data\":\"test\"}"));
-    EXPECT_THAT(cerr_buffer_.str(), ::testing::HasSubstr("Not connected to server"));
+    EXPECT_FALSE(network_manager->sendRequest("/api/endpoint", "{\"data\":\"value\"}"));
     
-    // When connected
-    cerr_buffer_.str(""); // Clear buffer
-    cout_buffer_.str(""); // Clear buffer
-    EXPECT_TRUE(manager.connect());
-    
-    EXPECT_TRUE(manager.sendRequest("/api/endpoint", "{\"data\":\"test\"}"));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Sending request to test.server.com/api/endpoint"));
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("{\"data\":\"test\"}"));
+    std::string error = output_capture.getCerrOutput();
+    EXPECT_THAT(error, ::testing::HasSubstr("Not connected to server"));
 }
 
-TEST_F(NetworkManagerTest, ReceiveResponse) {
-    NetworkManager manager("test.server.com", 8080);
+TEST_F(NetworkManagerTest, SendRequestSucceedsWhenConnected) {
+    network_manager->connect();
+    output_capture.clear();
     
-    // When not connected
-    EXPECT_EQ(manager.receiveResponse(), "");
-    EXPECT_THAT(cerr_buffer_.str(), ::testing::HasSubstr("Not connected to server"));
+    EXPECT_TRUE(network_manager->sendRequest("/api/endpoint", "{\"data\":\"value\"}"));
     
-    // When connected
-    cerr_buffer_.str(""); // Clear buffer
-    EXPECT_TRUE(manager.connect());
-    
-    EXPECT_EQ(manager.receiveResponse(), "{\"status\":\"ok\"}");
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Sending request to test.server.com/api/endpoint"));
+    EXPECT_THAT(output, ::testing::HasSubstr("{\"data\":\"value\"}"));
 }
 
+TEST_F(NetworkManagerTest, ReceiveResponseFailsWhenNotConnected) {
+    EXPECT_FALSE(network_manager->isConnected());
+    
+    EXPECT_EQ("", network_manager->receiveResponse());
+    
+    std::string error = output_capture.getCerrOutput();
+    EXPECT_THAT(error, ::testing::HasSubstr("Not connected to server"));
+}
+
+TEST_F(NetworkManagerTest, ReceiveResponseReturnsDataWhenConnected) {
+    network_manager->connect();
+    output_capture.clear();
+    
+    std::string response = network_manager->receiveResponse();
+    
+    EXPECT_EQ("{\"status\":\"ok\"}", response);
+}
+
+// This test verifies that the destructor properly disconnects
 TEST_F(NetworkManagerTest, DestructorDisconnects) {
-    {
-        NetworkManager manager("test.server.com", 8080);
-        EXPECT_TRUE(manager.connect());
-        EXPECT_TRUE(manager.isConnected());
-        
-        // Destructor will be called when exiting this scope
-    }
+    network_manager->connect();
+    EXPECT_TRUE(network_manager->isConnected());
+    output_capture.clear();
     
-    // Can't directly test the destructor's effects, but we can observe the output
-    EXPECT_THAT(cout_buffer_.str(), ::testing::HasSubstr("Disconnected from server"));
+    network_manager.reset();
+    
+    std::string output = output_capture.getCoutOutput();
+    EXPECT_THAT(output, ::testing::HasSubstr("Disconnecting from server"));
 }
-
-} // namespace equipment_tracker
 // </test_code>
