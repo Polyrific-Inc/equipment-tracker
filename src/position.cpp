@@ -31,9 +31,6 @@ namespace equipment_tracker
         if (std::abs(longitude_) > 180.0 || std::abs(other.longitude_) > 180.0) {
             throw std::invalid_argument("Longitude must be between -180 and 180 degrees");
         }
-        if (EARTH_RADIUS_METERS <= 0.0) {
-            throw std::runtime_error("Earth radius must be positive");
-        }
 
         // Early return for same position (pointer comparison)
         if (this == &other) {
@@ -65,10 +62,13 @@ namespace equipment_tracker
                          std::cos(lat1_rad) * std::cos(lat2_rad) *
                              sin_dlon_half * sin_dlon_half;
 
+        // Clamp 'a' to [0, 1] to handle floating-point precision errors
+        const double a_clamped = std::max(0.0, std::min(1.0, a));
+        
         // Use numerically stable form of atan2 for small distances
         // This avoids the need for clamping which can introduce errors
-        const double sqrt_a = std::sqrt(a);
-        const double sqrt_1_minus_a = std::sqrt(1.0 - a);
+        const double sqrt_a = std::sqrt(a_clamped);
+        const double sqrt_1_minus_a = std::sqrt(1.0 - a_clamped);
         const double c = 2.0 * std::atan2(sqrt_a, sqrt_1_minus_a);
 
         // Distance in meters
