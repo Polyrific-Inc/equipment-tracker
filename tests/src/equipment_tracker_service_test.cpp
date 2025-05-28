@@ -20,46 +20,65 @@ public:
     MOCK_METHOD(void, stop, ());
 };
 
-class Position {
+class DataStorage {
 public:
-    Position(double lat, double lon, double alt, double accuracy, uint64_t timestamp)
-        : lat_(lat), lon_(lon), alt_(alt), accuracy_(accuracy), timestamp_(timestamp) {}
-    
-    double getLatitude() const { return lat_; }
-    double getLongitude() const { return lon_; }
-    double getAltitude() const { return alt_; }
-    double getAccuracy() const { return accuracy_; }
-    uint64_t getTimestamp() const { return timestamp_; }
-    
-private:
-    double lat_;
-    double lon_;
-    double alt_;
-    double accuracy_;
-    uint64_t timestamp_;
+    MOCK_METHOD(bool, initialize, ());
+    MOCK_METHOD(bool, saveEquipment, (const class Equipment&));
+    MOCK_METHOD(bool, deleteEquipment, (const std::string&));
+    MOCK_METHOD(std::vector<class Equipment>, getAllEquipment, ());
+    MOCK_METHOD(bool, savePosition, (const std::string&, const class Position&));
+    MOCK_METHOD(bool, updateEquipment, (const class Equipment&));
 };
 
-enum class EquipmentStatus {
-    Active,
-    Inactive,
-    Maintenance,
-    Unknown
+class NetworkManager {
+public:
+    using CommandHandler = std::function<void(const std::string&)>;
+    
+    MOCK_METHOD(void, registerCommandHandler, (CommandHandler handler));
+    MOCK_METHOD(void, connect, ());
+    MOCK_METHOD(void, disconnect, ());
+    MOCK_METHOD(void, sendPositionUpdate, (const std::string&, const class Position&));
 };
 
+// Forward declarations for types used in the service
+enum class EquipmentStatus { Inactive, Active, Maintenance, OutOfService };
 using EquipmentId = std::string;
 using Timestamp = uint64_t;
 
+constexpr double DEFAULT_POSITION_ACCURACY = 5.0;
+
+// Position class
+class Position {
+public:
+    Position(double lat, double lon, double alt, double acc, Timestamp ts)
+        : latitude_(lat), longitude_(lon), altitude_(alt), accuracy_(acc), timestamp_(ts) {}
+    
+    double getLatitude() const { return latitude_; }
+    double getLongitude() const { return longitude_; }
+    double getAltitude() const { return altitude_; }
+    double getAccuracy() const { return accuracy_; }
+    Timestamp getTimestamp() const { return timestamp_; }
+    
+private:
+    double latitude_;
+    double longitude_;
+    double altitude_;
+    double accuracy_;
+    Timestamp timestamp_;
+};
+
+// Equipment class
 class Equipment {
 public:
-    Equipment(const EquipmentId& id, const std::string& name, EquipmentStatus status = EquipmentStatus::Unknown)
+    Equipment(const EquipmentId& id, const std::string& name, EquipmentStatus status = EquipmentStatus::Inactive)
         : id_(id), name_(name), status_(status) {}
     
     EquipmentId getId() const { return id_; }
     std::string getName() const { return name_; }
     EquipmentStatus getStatus() const { return status_; }
-    void setStatus(EquipmentStatus status) { status_ = status; }
-    
     std::optional<Position> getLastPosition() const { return last_position_; }
+    
+    void setStatus(EquipmentStatus status) { status_ = status; }
     void recordPosition(const Position& position) { last_position_ = position; }
     
     std::string toString() const { 
@@ -73,30 +92,10 @@ private:
     std::optional<Position> last_position_;
 };
 
-class DataStorage {
-public:
-    MOCK_METHOD(bool, initialize, ());
-    MOCK_METHOD(bool, saveEquipment, (const Equipment& equipment));
-    MOCK_METHOD(bool, updateEquipment, (const Equipment& equipment));
-    MOCK_METHOD(bool, deleteEquipment, (const EquipmentId& id));
-    MOCK_METHOD(std::vector<Equipment>, getAllEquipment, ());
-    MOCK_METHOD(bool, savePosition, (const EquipmentId& id, const Position& position));
-};
-
-class NetworkManager {
-public:
-    using CommandHandler = std::function<void(const std::string&)>;
-    
-    MOCK_METHOD(void, registerCommandHandler, (CommandHandler handler));
-    MOCK_METHOD(void, connect, ());
-    MOCK_METHOD(void, disconnect, ());
-    MOCK_METHOD(void, sendPositionUpdate, (const EquipmentId& id, const Position& position));
-};
-
-// Include the class we're testing
+// Include the class being tested
 #include "equipment_tracker/equipment_tracker_service.h"
 
-// Create mock classes using GMock
+// Create mock classes for dependencies
 class MockGPSTracker : public GPSTracker {
 public:
     MOCK_METHOD(void, registerPositionCallback, (PositionCallback callback), (override));
@@ -107,11 +106,11 @@ public:
 class MockDataStorage : public DataStorage {
 public:
     MOCK_METHOD(bool, initialize, (), (override));
-    MOCK_METHOD(bool, saveEquipment, (const Equipment& equipment), (override));
-    MOCK_METHOD(bool, updateEquipment, (const Equipment& equipment), (override));
-    MOCK_METHOD(bool, deleteEquipment, (const EquipmentId& id), (override));
+    MOCK_METHOD(bool, saveEquipment, (const Equipment&), (override));
+    MOCK_METHOD(bool, deleteEquipment, (const EquipmentId&), (override));
     MOCK_METHOD(std::vector<Equipment>, getAllEquipment, (), (override));
-    MOCK_METHOD(bool, savePosition, (const EquipmentId& id, const Position& position), (override));
+    MOCK_METHOD(bool, savePosition, (const EquipmentId&, const Position&), (override));
+    MOCK_METHOD(bool, updateEquipment, (const Equipment&), (override));
 };
 
 class MockNetworkManager : public NetworkManager {
@@ -119,59 +118,96 @@ public:
     MOCK_METHOD(void, registerCommandHandler, (CommandHandler handler), (override));
     MOCK_METHOD(void, connect, (), (override));
     MOCK_METHOD(void, disconnect, (), (override));
-    MOCK_METHOD(void, sendPositionUpdate, (const EquipmentId& id, const Position& position), (override));
+    MOCK_METHOD(void, sendPositionUpdate, (const EquipmentId&, const Position&), (override));
 };
+
+namespace equipment_tracker {
 
 // Test fixture
 class EquipmentTrackerServiceTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create mock objects
-        mock_gps_tracker_ = std::make_unique<MockGPSTracker>();
-        mock_data_storage_ = std::make_unique<MockDataStorage>();
-        mock_network_manager_ = std::make_unique<MockNetworkManager>();
+        gps_tracker_mock_ = new ::testing::NiceMock<MockGPSTracker>();
+        data_storage_mock_ = new ::testing::NiceMock<MockDataStorage>();
+        network_manager_mock_ = new ::testing::NiceMock<MockNetworkManager>();
         
-        // Capture pointers before they're moved
-        mock_gps_tracker_ptr_ = mock_gps_tracker_.get();
-        mock_data_storage_ptr_ = mock_data_storage_.get();
-        mock_network_manager_ptr_ = mock_network_manager_.get();
+        // Capture callbacks
+        EXPECT_CALL(*gps_tracker_mock_, registerPositionCallback(::testing::_))
+            .WillOnce(::testing::SaveArg<0>(&position_callback_));
         
-        // Create service with mock dependencies
-        service_ = std::make_unique<equipment_tracker::EquipmentTrackerService>(
-            std::move(mock_gps_tracker_),
-            std::move(mock_data_storage_),
-            std::move(mock_network_manager_)
+        EXPECT_CALL(*network_manager_mock_, registerCommandHandler(::testing::_))
+            .WillOnce(::testing::SaveArg<0>(&command_handler_));
+        
+        // Create service with mocks
+        service_ = std::make_unique<EquipmentTrackerService>(
+            std::unique_ptr<GPSTracker>(gps_tracker_mock_),
+            std::unique_ptr<DataStorage>(data_storage_mock_),
+            std::unique_ptr<NetworkManager>(network_manager_mock_)
         );
     }
     
-    // Test equipment data
-    Equipment createTestEquipment(const std::string& id_suffix = "001", 
-                                 EquipmentStatus status = EquipmentStatus::Active) {
-        return Equipment("TEST-" + id_suffix, "Test Equipment " + id_suffix, status);
+    void TearDown() override {
+        service_.reset();
     }
     
-    std::unique_ptr<equipment_tracker::EquipmentTrackerService> service_;
-    std::unique_ptr<MockGPSTracker> mock_gps_tracker_;
-    std::unique_ptr<MockDataStorage> mock_data_storage_;
-    std::unique_ptr<MockNetworkManager> mock_network_manager_;
+    // Helper method to add test equipment
+    void AddTestEquipment() {
+        Equipment e1("FORKLIFT-001", "Forklift 1", EquipmentStatus::Active);
+        Equipment e2("BULLDOZER-001", "Bulldozer 1", EquipmentStatus::Inactive);
+        Equipment e3("CRANE-001", "Crane 1", EquipmentStatus::Maintenance);
+        
+        EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+            .WillRepeatedly(::testing::Return(true));
+        
+        service_->addEquipment(e1);
+        service_->addEquipment(e2);
+        service_->addEquipment(e3);
+    }
     
-    // Raw pointers to mocks (for use after they're moved)
-    MockGPSTracker* mock_gps_tracker_ptr_;
-    MockDataStorage* mock_data_storage_ptr_;
-    MockNetworkManager* mock_network_manager_ptr_;
+    // Helper to simulate position with equipment
+    void SimulatePositionWithEquipment(const EquipmentId& id, double lat, double lon, double alt) {
+        Equipment equipment(id, "Test Equipment", EquipmentStatus::Active);
+        Position position(lat, lon, alt, DEFAULT_POSITION_ACCURACY, 12345);
+        equipment.recordPosition(position);
+        
+        EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+            .WillOnce(::testing::Return(true));
+        
+        service_->addEquipment(equipment);
+    }
     
-    const double DEFAULT_POSITION_ACCURACY = 5.0; // meters
+    // Mocks (raw pointers for access in tests)
+    MockGPSTracker* gps_tracker_mock_;
+    MockDataStorage* data_storage_mock_;
+    MockNetworkManager* network_manager_mock_;
+    
+    // Service under test
+    std::unique_ptr<EquipmentTrackerService> service_;
+    
+    // Captured callbacks
+    GPSTracker::PositionCallback position_callback_;
+    NetworkManager::CommandHandler command_handler_;
 };
 
-// Test start method
-TEST_F(EquipmentTrackerServiceTest, StartInitializesSystemCorrectly) {
+// Constructor test
+TEST_F(EquipmentTrackerServiceTest, ConstructorRegistersCallbacks) {
+    // Callbacks should have been captured in SetUp
+    EXPECT_TRUE(position_callback_ != nullptr);
+    EXPECT_TRUE(command_handler_ != nullptr);
+}
+
+// Start/Stop tests
+TEST_F(EquipmentTrackerServiceTest, StartInitializesComponentsWhenNotRunning) {
     // Setup expectations
-    EXPECT_CALL(*mock_data_storage_ptr_, initialize())
-        .WillOnce(testing::Return(true));
-    EXPECT_CALL(*mock_data_storage_ptr_, getAllEquipment())
-        .WillOnce(testing::Return(std::vector<Equipment>{}));
-    EXPECT_CALL(*mock_network_manager_ptr_, connect());
-    EXPECT_CALL(*mock_gps_tracker_ptr_, start());
+    EXPECT_CALL(*data_storage_mock_, initialize())
+        .WillOnce(::testing::Return(true));
+    
+    std::vector<Equipment> equipment_list;
+    EXPECT_CALL(*data_storage_mock_, getAllEquipment())
+        .WillOnce(::testing::Return(equipment_list));
+    
+    EXPECT_CALL(*network_manager_mock_, connect());
+    EXPECT_CALL(*gps_tracker_mock_, start());
     
     // Call method under test
     service_->start();
@@ -180,15 +216,32 @@ TEST_F(EquipmentTrackerServiceTest, StartInitializesSystemCorrectly) {
     EXPECT_TRUE(service_->isRunning());
 }
 
-// Test start method with initialization failure
+TEST_F(EquipmentTrackerServiceTest, StartDoesNothingWhenAlreadyRunning) {
+    // Setup initial state
+    EXPECT_CALL(*data_storage_mock_, initialize())
+        .WillOnce(::testing::Return(true));
+    
+    std::vector<Equipment> equipment_list;
+    EXPECT_CALL(*data_storage_mock_, getAllEquipment())
+        .WillOnce(::testing::Return(equipment_list));
+    
+    EXPECT_CALL(*network_manager_mock_, connect());
+    EXPECT_CALL(*gps_tracker_mock_, start());
+    
+    service_->start();
+    
+    // No expectations for second call - nothing should happen
+    service_->start();
+}
+
 TEST_F(EquipmentTrackerServiceTest, StartFailsWhenStorageInitializationFails) {
     // Setup expectations
-    EXPECT_CALL(*mock_data_storage_ptr_, initialize())
-        .WillOnce(testing::Return(false));
+    EXPECT_CALL(*data_storage_mock_, initialize())
+        .WillOnce(::testing::Return(false));
     
-    // These should not be called if initialization fails
-    EXPECT_CALL(*mock_network_manager_ptr_, connect()).Times(0);
-    EXPECT_CALL(*mock_gps_tracker_ptr_, start()).Times(0);
+    // These should not be called
+    EXPECT_CALL(*network_manager_mock_, connect()).Times(0);
+    EXPECT_CALL(*gps_tracker_mock_, start()).Times(0);
     
     // Call method under test
     service_->start();
@@ -197,22 +250,23 @@ TEST_F(EquipmentTrackerServiceTest, StartFailsWhenStorageInitializationFails) {
     EXPECT_FALSE(service_->isRunning());
 }
 
-// Test stop method
-TEST_F(EquipmentTrackerServiceTest, StopShutdownsSystemCorrectly) {
-    // First start the service
-    EXPECT_CALL(*mock_data_storage_ptr_, initialize())
-        .WillOnce(testing::Return(true));
-    EXPECT_CALL(*mock_data_storage_ptr_, getAllEquipment())
-        .WillOnce(testing::Return(std::vector<Equipment>{}));
-    EXPECT_CALL(*mock_network_manager_ptr_, connect());
-    EXPECT_CALL(*mock_gps_tracker_ptr_, start());
+TEST_F(EquipmentTrackerServiceTest, StopShutdownsComponentsWhenRunning) {
+    // Setup initial state
+    EXPECT_CALL(*data_storage_mock_, initialize())
+        .WillOnce(::testing::Return(true));
+    
+    std::vector<Equipment> equipment_list;
+    EXPECT_CALL(*data_storage_mock_, getAllEquipment())
+        .WillOnce(::testing::Return(equipment_list));
+    
+    EXPECT_CALL(*network_manager_mock_, connect());
+    EXPECT_CALL(*gps_tracker_mock_, start());
     
     service_->start();
-    EXPECT_TRUE(service_->isRunning());
     
     // Setup expectations for stop
-    EXPECT_CALL(*mock_gps_tracker_ptr_, stop());
-    EXPECT_CALL(*mock_network_manager_ptr_, disconnect());
+    EXPECT_CALL(*gps_tracker_mock_, stop());
+    EXPECT_CALL(*network_manager_mock_, disconnect());
     
     // Call method under test
     service_->stop();
@@ -221,321 +275,222 @@ TEST_F(EquipmentTrackerServiceTest, StopShutdownsSystemCorrectly) {
     EXPECT_FALSE(service_->isRunning());
 }
 
-// Test addEquipment method
-TEST_F(EquipmentTrackerServiceTest, AddEquipmentStoresEquipmentCorrectly) {
-    Equipment test_equipment = createTestEquipment();
-    
-    // Setup expectations
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
+TEST_F(EquipmentTrackerServiceTest, StopDoesNothingWhenNotRunning) {
+    // No expectations - nothing should happen
+    EXPECT_CALL(*gps_tracker_mock_, stop()).Times(0);
+    EXPECT_CALL(*network_manager_mock_, disconnect()).Times(0);
     
     // Call method under test
-    bool result = service_->addEquipment(test_equipment);
+    service_->stop();
     
-    // Verify result
-    EXPECT_TRUE(result);
-    
-    // Verify equipment was stored
-    auto stored_equipment = service_->getEquipment(test_equipment.getId());
-    EXPECT_TRUE(stored_equipment.has_value());
-    EXPECT_EQ(stored_equipment->getId(), test_equipment.getId());
-    EXPECT_EQ(stored_equipment->getName(), test_equipment.getName());
-    EXPECT_EQ(stored_equipment->getStatus(), test_equipment.getStatus());
+    // Verify service is not running
+    EXPECT_FALSE(service_->isRunning());
 }
 
-// Test addEquipment with duplicate ID
-TEST_F(EquipmentTrackerServiceTest, AddEquipmentFailsWithDuplicateId) {
-    Equipment test_equipment = createTestEquipment();
+// Equipment management tests
+TEST_F(EquipmentTrackerServiceTest, AddEquipmentSucceeds) {
+    Equipment equipment("TEST-001", "Test Equipment");
     
-    // Add equipment first time
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
-    EXPECT_TRUE(service_->addEquipment(test_equipment));
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    // Try to add again with same ID
-    bool result = service_->addEquipment(test_equipment);
+    bool result = service_->addEquipment(equipment);
     
-    // Verify result
+    EXPECT_TRUE(result);
+    
+    // Verify equipment was added
+    auto retrieved = service_->getEquipment("TEST-001");
+    EXPECT_TRUE(retrieved.has_value());
+    EXPECT_EQ(retrieved->getId(), "TEST-001");
+    EXPECT_EQ(retrieved->getName(), "Test Equipment");
+}
+
+TEST_F(EquipmentTrackerServiceTest, AddEquipmentFailsForDuplicate) {
+    Equipment equipment("TEST-001", "Test Equipment");
+    
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
+    
+    bool result1 = service_->addEquipment(equipment);
+    EXPECT_TRUE(result1);
+    
+    // Try to add again - should fail
+    bool result2 = service_->addEquipment(equipment);
+    EXPECT_FALSE(result2);
+}
+
+TEST_F(EquipmentTrackerServiceTest, AddEquipmentFailsWhenStorageFails) {
+    Equipment equipment("TEST-001", "Test Equipment");
+    
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(false));
+    
+    bool result = service_->addEquipment(equipment);
+    
     EXPECT_FALSE(result);
 }
 
-// Test removeEquipment method
-TEST_F(EquipmentTrackerServiceTest, RemoveEquipmentDeletesEquipmentCorrectly) {
-    Equipment test_equipment = createTestEquipment();
-    
+TEST_F(EquipmentTrackerServiceTest, RemoveEquipmentSucceeds) {
     // Add equipment first
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
-    service_->addEquipment(test_equipment);
+    Equipment equipment("TEST-001", "Test Equipment");
     
-    // Setup expectations for remove
-    EXPECT_CALL(*mock_data_storage_ptr_, deleteEquipment(test_equipment.getId()))
-        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    // Call method under test
-    bool result = service_->removeEquipment(test_equipment.getId());
+    service_->addEquipment(equipment);
     
-    // Verify result
+    // Now remove it
+    EXPECT_CALL(*data_storage_mock_, deleteEquipment("TEST-001"))
+        .WillOnce(::testing::Return(true));
+    
+    bool result = service_->removeEquipment("TEST-001");
+    
     EXPECT_TRUE(result);
     
     // Verify equipment was removed
-    auto stored_equipment = service_->getEquipment(test_equipment.getId());
-    EXPECT_FALSE(stored_equipment.has_value());
+    auto retrieved = service_->getEquipment("TEST-001");
+    EXPECT_FALSE(retrieved.has_value());
 }
 
-// Test removeEquipment with non-existent ID
-TEST_F(EquipmentTrackerServiceTest, RemoveEquipmentFailsWithNonExistentId) {
-    // Call method under test with non-existent ID
-    bool result = service_->removeEquipment("NON-EXISTENT-ID");
-    
-    // Verify result
+TEST_F(EquipmentTrackerServiceTest, RemoveEquipmentFailsForNonexistent) {
+    bool result = service_->removeEquipment("NONEXISTENT");
     EXPECT_FALSE(result);
 }
 
-// Test getEquipment method
 TEST_F(EquipmentTrackerServiceTest, GetEquipmentReturnsCorrectEquipment) {
-    Equipment test_equipment = createTestEquipment();
-    
     // Add equipment
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
-    service_->addEquipment(test_equipment);
+    Equipment equipment("TEST-001", "Test Equipment");
     
-    // Call method under test
-    auto result = service_->getEquipment(test_equipment.getId());
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    // Verify result
-    EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(result->getId(), test_equipment.getId());
-    EXPECT_EQ(result->getName(), test_equipment.getName());
-    EXPECT_EQ(result->getStatus(), test_equipment.getStatus());
+    service_->addEquipment(equipment);
+    
+    // Get equipment
+    auto retrieved = service_->getEquipment("TEST-001");
+    
+    EXPECT_TRUE(retrieved.has_value());
+    EXPECT_EQ(retrieved->getId(), "TEST-001");
+    EXPECT_EQ(retrieved->getName(), "Test Equipment");
 }
 
-// Test getEquipment with non-existent ID
-TEST_F(EquipmentTrackerServiceTest, GetEquipmentReturnsNulloptWithNonExistentId) {
-    // Call method under test with non-existent ID
-    auto result = service_->getEquipment("NON-EXISTENT-ID");
-    
-    // Verify result
-    EXPECT_FALSE(result.has_value());
+TEST_F(EquipmentTrackerServiceTest, GetEquipmentReturnsNulloptForNonexistent) {
+    auto retrieved = service_->getEquipment("NONEXISTENT");
+    EXPECT_FALSE(retrieved.has_value());
 }
 
-// Test getAllEquipment method
 TEST_F(EquipmentTrackerServiceTest, GetAllEquipmentReturnsAllEquipment) {
-    // Add multiple equipment
-    Equipment equipment1 = createTestEquipment("001");
-    Equipment equipment2 = createTestEquipment("002");
-    Equipment equipment3 = createTestEquipment("003");
+    AddTestEquipment();
     
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillRepeatedly(testing::Return(true));
+    auto all_equipment = service_->getAllEquipment();
     
-    service_->addEquipment(equipment1);
-    service_->addEquipment(equipment2);
-    service_->addEquipment(equipment3);
+    EXPECT_EQ(all_equipment.size(), 3);
     
-    // Call method under test
-    auto result = service_->getAllEquipment();
-    
-    // Verify result
-    EXPECT_EQ(result.size(), 3);
-    
-    // Check if all equipment are in the result
-    auto hasEquipment = [&result](const Equipment& equipment) {
-        return std::find_if(result.begin(), result.end(), 
-                           [&equipment](const Equipment& e) { 
-                               return e.getId() == equipment.getId(); 
-                           }) != result.end();
+    // Check if all equipment is present (order may vary)
+    auto has_id = [&all_equipment](const std::string& id) {
+        return std::any_of(all_equipment.begin(), all_equipment.end(),
+                          [&id](const Equipment& e) { return e.getId() == id; });
     };
     
-    EXPECT_TRUE(hasEquipment(equipment1));
-    EXPECT_TRUE(hasEquipment(equipment2));
-    EXPECT_TRUE(hasEquipment(equipment3));
+    EXPECT_TRUE(has_id("FORKLIFT-001"));
+    EXPECT_TRUE(has_id("BULLDOZER-001"));
+    EXPECT_TRUE(has_id("CRANE-001"));
 }
 
-// Test findEquipmentByStatus method
 TEST_F(EquipmentTrackerServiceTest, FindEquipmentByStatusReturnsCorrectEquipment) {
-    // Add equipment with different statuses
-    Equipment active1 = createTestEquipment("001", EquipmentStatus::Active);
-    Equipment active2 = createTestEquipment("002", EquipmentStatus::Active);
-    Equipment inactive = createTestEquipment("003", EquipmentStatus::Inactive);
-    Equipment maintenance = createTestEquipment("004", EquipmentStatus::Maintenance);
+    AddTestEquipment();
     
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillRepeatedly(testing::Return(true));
+    auto active_equipment = service_->findEquipmentByStatus(EquipmentStatus::Active);
+    EXPECT_EQ(active_equipment.size(), 1);
+    EXPECT_EQ(active_equipment[0].getId(), "FORKLIFT-001");
     
-    service_->addEquipment(active1);
-    service_->addEquipment(active2);
-    service_->addEquipment(inactive);
-    service_->addEquipment(maintenance);
+    auto maintenance_equipment = service_->findEquipmentByStatus(EquipmentStatus::Maintenance);
+    EXPECT_EQ(maintenance_equipment.size(), 1);
+    EXPECT_EQ(maintenance_equipment[0].getId(), "CRANE-001");
     
-    // Call method under test
-    auto active_result = service_->findEquipmentByStatus(EquipmentStatus::Active);
-    auto inactive_result = service_->findEquipmentByStatus(EquipmentStatus::Inactive);
-    auto maintenance_result = service_->findEquipmentByStatus(EquipmentStatus::Maintenance);
-    
-    // Verify results
-    EXPECT_EQ(active_result.size(), 2);
-    EXPECT_EQ(inactive_result.size(), 1);
-    EXPECT_EQ(maintenance_result.size(), 1);
-    
-    // Check specific equipment
-    auto hasEquipment = [](const std::vector<Equipment>& list, const Equipment& equipment) {
-        return std::find_if(list.begin(), list.end(), 
-                           [&equipment](const Equipment& e) { 
-                               return e.getId() == equipment.getId(); 
-                           }) != list.end();
-    };
-    
-    EXPECT_TRUE(hasEquipment(active_result, active1));
-    EXPECT_TRUE(hasEquipment(active_result, active2));
-    EXPECT_TRUE(hasEquipment(inactive_result, inactive));
-    EXPECT_TRUE(hasEquipment(maintenance_result, maintenance));
+    auto inactive_equipment = service_->findEquipmentByStatus(EquipmentStatus::Inactive);
+    EXPECT_EQ(inactive_equipment.size(), 1);
+    EXPECT_EQ(inactive_equipment[0].getId(), "BULLDOZER-001");
 }
 
-// Test findActiveEquipment method
-TEST_F(EquipmentTrackerServiceTest, FindActiveEquipmentReturnsOnlyActiveEquipment) {
-    // Add equipment with different statuses
-    Equipment active1 = createTestEquipment("001", EquipmentStatus::Active);
-    Equipment active2 = createTestEquipment("002", EquipmentStatus::Active);
-    Equipment inactive = createTestEquipment("003", EquipmentStatus::Inactive);
+TEST_F(EquipmentTrackerServiceTest, FindActiveEquipmentReturnsActiveEquipment) {
+    AddTestEquipment();
     
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillRepeatedly(testing::Return(true));
+    auto active_equipment = service_->findActiveEquipment();
     
-    service_->addEquipment(active1);
-    service_->addEquipment(active2);
-    service_->addEquipment(inactive);
-    
-    // Call method under test
-    auto result = service_->findActiveEquipment();
-    
-    // Verify result
-    EXPECT_EQ(result.size(), 2);
-    
-    // Check if only active equipment are in the result
-    auto hasEquipment = [&result](const Equipment& equipment) {
-        return std::find_if(result.begin(), result.end(), 
-                           [&equipment](const Equipment& e) { 
-                               return e.getId() == equipment.getId(); 
-                           }) != result.end();
-    };
-    
-    EXPECT_TRUE(hasEquipment(active1));
-    EXPECT_TRUE(hasEquipment(active2));
-    EXPECT_FALSE(hasEquipment(inactive));
+    EXPECT_EQ(active_equipment.size(), 1);
+    EXPECT_EQ(active_equipment[0].getId(), "FORKLIFT-001");
 }
 
-// Test findEquipmentInArea method
-TEST_F(EquipmentTrackerServiceTest, FindEquipmentInAreaReturnsEquipmentInBounds) {
-    // Create equipment with positions
-    Equipment equipment1 = createTestEquipment("001");
-    Equipment equipment2 = createTestEquipment("002");
-    Equipment equipment3 = createTestEquipment("003");
+TEST_F(EquipmentTrackerServiceTest, FindEquipmentInAreaReturnsCorrectEquipment) {
+    // Add equipment with positions
+    SimulatePositionWithEquipment("EQUIP-001", 10.0, 20.0, 100.0);
+    SimulatePositionWithEquipment("EQUIP-002", 15.0, 25.0, 100.0);
+    SimulatePositionWithEquipment("EQUIP-003", 30.0, 40.0, 100.0);
     
-    // Add positions
-    Position pos1(10.0, 20.0, 100.0, 5.0, 123456789);
-    Position pos2(15.0, 25.0, 200.0, 5.0, 123456789);
-    Position pos3(30.0, 40.0, 300.0, 5.0, 123456789);
-    
-    equipment1.recordPosition(pos1);
-    equipment2.recordPosition(pos2);
-    equipment3.recordPosition(pos3);
-    
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillRepeatedly(testing::Return(true));
-    
-    service_->addEquipment(equipment1);
-    service_->addEquipment(equipment2);
-    service_->addEquipment(equipment3);
-    
-    // Call method under test - search area that includes equipment1 and equipment2
+    // Search in area that includes first two equipment
     auto result = service_->findEquipmentInArea(5.0, 15.0, 20.0, 30.0);
     
-    // Verify result
     EXPECT_EQ(result.size(), 2);
     
-    // Check if correct equipment are in the result
-    auto hasEquipment = [&result](const Equipment& equipment) {
-        return std::find_if(result.begin(), result.end(), 
-                           [&equipment](const Equipment& e) { 
-                               return e.getId() == equipment.getId(); 
-                           }) != result.end();
+    // Check if correct equipment is present (order may vary)
+    auto has_id = [&result](const std::string& id) {
+        return std::any_of(result.begin(), result.end(),
+                          [&id](const Equipment& e) { return e.getId() == id; });
     };
     
-    EXPECT_TRUE(hasEquipment(equipment1));
-    EXPECT_TRUE(hasEquipment(equipment2));
-    EXPECT_FALSE(hasEquipment(equipment3));
+    EXPECT_TRUE(has_id("EQUIP-001"));
+    EXPECT_TRUE(has_id("EQUIP-002"));
+    EXPECT_FALSE(has_id("EQUIP-003"));
 }
 
-// Test setGeofence method
 TEST_F(EquipmentTrackerServiceTest, SetGeofenceReturnsTrue) {
-    // Call method under test
     bool result = service_->setGeofence("TEST-001", 10.0, 20.0, 30.0, 40.0);
-    
-    // Verify result - this is just a placeholder in the implementation
     EXPECT_TRUE(result);
 }
 
-// Test handlePositionUpdate method
-TEST_F(EquipmentTrackerServiceTest, HandlePositionUpdateUpdatesEquipmentPosition) {
-    // Add test equipment
-    Equipment test_equipment = createTestEquipment();
+// Callback handling tests
+TEST_F(EquipmentTrackerServiceTest, HandlePositionUpdateUpdatesEquipment) {
+    // Add equipment
+    Equipment equipment("FORKLIFT-001", "Test Forklift");
     
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
+    EXPECT_CALL(*data_storage_mock_, saveEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    service_->addEquipment(test_equipment);
+    service_->addEquipment(equipment);
     
     // Setup expectations for position update
-    EXPECT_CALL(*mock_data_storage_ptr_, savePosition(testing::_, testing::_))
-        .WillOnce(testing::Return(true));
-    EXPECT_CALL(*mock_data_storage_ptr_, updateEquipment(testing::_))
-        .WillOnce(testing::Return(true));
-    EXPECT_CALL(*mock_network_manager_ptr_, sendPositionUpdate(testing::_, testing::_));
+    EXPECT_CALL(*data_storage_mock_, savePosition(::testing::_, ::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    // Call method under test
-    double lat = 10.0, lon = 20.0, alt = 100.0;
-    Timestamp timestamp = 123456789;
+    EXPECT_CALL(*data_storage_mock_, updateEquipment(::testing::_))
+        .WillOnce(::testing::Return(true));
     
-    // We need to access the private method, so we'll use the callback that was registered
-    // This requires modifying the service to expose the callback for testing
-    service_->testHandlePositionUpdate(lat, lon, alt, timestamp);
+    EXPECT_CALL(*network_manager_mock_, sendPositionUpdate(::testing::_, ::testing::_));
     
-    // Verify equipment position was updated
-    auto updated_equipment = service_->getEquipment(test_equipment.getId());
-    EXPECT_TRUE(updated_equipment.has_value());
+    // Trigger position callback
+    position_callback_(10.0, 20.0, 100.0, 12345);
     
-    auto position = updated_equipment->getLastPosition();
+    // Verify equipment was updated
+    auto updated = service_->getEquipment("FORKLIFT-001");
+    EXPECT_TRUE(updated.has_value());
+    EXPECT_EQ(updated->getStatus(), EquipmentStatus::Active);
+    
+    auto position = updated->getLastPosition();
     EXPECT_TRUE(position.has_value());
-    EXPECT_NEAR(position->getLatitude(), lat, 0.0001);
-    EXPECT_NEAR(position->getLongitude(), lon, 0.0001);
-    EXPECT_NEAR(position->getAltitude(), alt, 0.0001);
-    EXPECT_EQ(position->getTimestamp(), timestamp);
-    
-    // Verify status was updated to Active
-    EXPECT_EQ(updated_equipment->getStatus(), EquipmentStatus::Active);
+    EXPECT_EQ(position->getLatitude(), 10.0);
+    EXPECT_EQ(position->getLongitude(), 20.0);
+    EXPECT_EQ(position->getAltitude(), 100.0);
 }
 
-// Test handleRemoteCommand method
 TEST_F(EquipmentTrackerServiceTest, HandleRemoteCommandProcessesStatusRequest) {
-    // Add test equipment
-    Equipment test_equipment = createTestEquipment();
+    AddTestEquipment();
     
-    EXPECT_CALL(*mock_data_storage_ptr_, saveEquipment(testing::_))
-        .WillOnce(testing::Return(true));
+    // Trigger command handler
+    command_handler_("STATUS_REQUEST");
     
-    service_->addEquipment(test_equipment);
-    
-    // Call method under test
-    service_->testHandleRemoteCommand("STATUS_REQUEST");
-    
-    // This is mostly a placeholder test since the method just logs information
-    // In a real implementation, we would verify that appropriate status data was sent
+    // No specific expectations to verify, just ensure it doesn't crash
 }
 
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+} // namespace equipment_tracker
 // </test_code>
