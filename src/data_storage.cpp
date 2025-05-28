@@ -482,7 +482,7 @@ namespace equipment_tracker
         {
             if (equipment.getStatus() == status)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -501,7 +501,7 @@ namespace equipment_tracker
         {
             if (equipment.getType() == type)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -532,7 +532,7 @@ namespace equipment_tracker
                 if (lat >= std::min(lat1, lat2) && lat <= std::max(lat1, lat2) &&
                     lon >= std::min(lon1, lon2) && lon <= std::max(lon1, lon2))
                 {
-                    result.push_back(equipment);
+                    result.push_back(std::move(equipment));
                 }
             }
         }
