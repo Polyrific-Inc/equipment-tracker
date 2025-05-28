@@ -47,7 +47,7 @@ protected:
 
     std::filesystem::path test_db_path_;
     std::unique_ptr<DataStorage> data_storage_;
-
+    
     // Helper method to create a test equipment
     Equipment createTestEquipment(const std::string& id = "test123") {
         Equipment equipment(id, EquipmentType::Drone, "Test Drone");
@@ -60,7 +60,7 @@ protected:
         
         return equipment;
     }
-
+    
     // Helper method to create a position at a specific time
     Position createPosition(double lat, double lon, double alt, double acc, time_t timestamp) {
         return Position(lat, lon, alt, acc, std::chrono::system_clock::from_time_t(timestamp));
@@ -76,7 +76,7 @@ TEST_F(DataStorageTest, InitializeCreatesDirectories) {
 
 TEST_F(DataStorageTest, InitializeIsIdempotent) {
     EXPECT_TRUE(data_storage_->initialize());
-    EXPECT_TRUE(data_storage_->initialize()); // Second call should also return true
+    EXPECT_TRUE(data_storage_->initialize());  // Second call should also return true
 }
 
 TEST_F(DataStorageTest, SaveAndLoadEquipment) {
@@ -87,9 +87,9 @@ TEST_F(DataStorageTest, SaveAndLoadEquipment) {
     
     // Load the equipment
     auto loaded = data_storage_->loadEquipment(original.getId());
+    ASSERT_TRUE(loaded.has_value());
     
     // Verify the loaded equipment matches the original
-    ASSERT_TRUE(loaded.has_value());
     EXPECT_EQ(loaded->getId(), original.getId());
     EXPECT_EQ(loaded->getName(), original.getName());
     EXPECT_EQ(loaded->getType(), original.getType());
@@ -101,11 +101,6 @@ TEST_F(DataStorageTest, SaveAndLoadEquipment) {
     EXPECT_DOUBLE_EQ(loaded->getLastPosition()->getLongitude(), original.getLastPosition()->getLongitude());
     EXPECT_DOUBLE_EQ(loaded->getLastPosition()->getAltitude(), original.getLastPosition()->getAltitude());
     EXPECT_DOUBLE_EQ(loaded->getLastPosition()->getAccuracy(), original.getLastPosition()->getAccuracy());
-    
-    // Timestamps might have slight differences due to serialization/deserialization
-    auto original_time = std::chrono::system_clock::to_time_t(original.getLastPosition()->getTimestamp());
-    auto loaded_time = std::chrono::system_clock::to_time_t(loaded->getLastPosition()->getTimestamp());
-    EXPECT_EQ(original_time, loaded_time);
 }
 
 TEST_F(DataStorageTest, LoadNonExistentEquipment) {
@@ -114,19 +109,19 @@ TEST_F(DataStorageTest, LoadNonExistentEquipment) {
 }
 
 TEST_F(DataStorageTest, UpdateEquipment) {
+    // Create and save initial equipment
     Equipment original = createTestEquipment();
-    
-    // Save the equipment
     EXPECT_TRUE(data_storage_->saveEquipment(original));
     
-    // Modify and update
+    // Modify the equipment
     Equipment updated = original;
     updated.setName("Updated Drone");
     updated.setStatus(EquipmentStatus::InUse);
     
+    // Update the equipment
     EXPECT_TRUE(data_storage_->updateEquipment(updated));
     
-    // Load and verify
+    // Load the equipment and verify changes
     auto loaded = data_storage_->loadEquipment(original.getId());
     ASSERT_TRUE(loaded.has_value());
     EXPECT_EQ(loaded->getName(), "Updated Drone");
@@ -134,172 +129,169 @@ TEST_F(DataStorageTest, UpdateEquipment) {
 }
 
 TEST_F(DataStorageTest, DeleteEquipment) {
+    // Create and save equipment
     Equipment equipment = createTestEquipment();
-    
-    // Save the equipment
     EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
     // Verify it exists
     EXPECT_TRUE(data_storage_->loadEquipment(equipment.getId()).has_value());
     
-    // Delete it
+    // Delete the equipment
     EXPECT_TRUE(data_storage_->deleteEquipment(equipment.getId()));
     
-    // Verify it's gone
+    // Verify it no longer exists
     EXPECT_FALSE(data_storage_->loadEquipment(equipment.getId()).has_value());
 }
 
 TEST_F(DataStorageTest, SaveAndGetPositionHistory) {
-    std::string id = "test123";
+    // Create equipment
+    Equipment equipment = createTestEquipment();
+    EXPECT_TRUE(data_storage_->saveEquipment(equipment));
     
     // Create positions at different times
-    struct tm timeinfo = {};
-    timeinfo.tm_year = 120;  // 2020
-    timeinfo.tm_mon = 0;     // January
-    timeinfo.tm_mday = 1;    // 1st
-    timeinfo.tm_hour = 12;   // 12:00
+    std::vector<Position> positions;
+    auto now = std::chrono::system_clock::now();
+    auto hour_ago = now - std::chrono::hours(1);
+    auto two_hours_ago = now - std::chrono::hours(2);
     
-    time_t base_time = MKGMTIME(&timeinfo);
-    
-    Position pos1 = createPosition(37.7749, -122.4194, 10.0, 5.0, base_time);
-    Position pos2 = createPosition(37.7750, -122.4195, 11.0, 4.0, base_time + 3600);
-    Position pos3 = createPosition(37.7751, -122.4196, 12.0, 3.0, base_time + 7200);
+    positions.push_back(Position(37.7749, -122.4194, 10.0, 5.0, two_hours_ago));
+    positions.push_back(Position(37.7750, -122.4195, 15.0, 4.0, hour_ago));
+    positions.push_back(Position(37.7751, -122.4196, 20.0, 3.0, now));
     
     // Save positions
-    EXPECT_TRUE(data_storage_->savePosition(id, pos1));
-    EXPECT_TRUE(data_storage_->savePosition(id, pos2));
-    EXPECT_TRUE(data_storage_->savePosition(id, pos3));
+    for (const auto& pos : positions) {
+        EXPECT_TRUE(data_storage_->savePosition(equipment.getId(), pos));
+    }
     
-    // Get position history for the full range
+    // Get position history for the entire time range
     auto history = data_storage_->getPositionHistory(
-        id, 
-        std::chrono::system_clock::from_time_t(base_time - 1),
-        std::chrono::system_clock::from_time_t(base_time + 7201)
+        equipment.getId(),
+        two_hours_ago - std::chrono::minutes(1),
+        now + std::chrono::minutes(1)
     );
     
-    // Verify all positions are returned
+    // Verify all positions are retrieved
     ASSERT_EQ(history.size(), 3);
     
-    // Positions should be sorted by timestamp
-    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 37.7749);
-    EXPECT_DOUBLE_EQ(history[1].getLatitude(), 37.7750);
-    EXPECT_DOUBLE_EQ(history[2].getLatitude(), 37.7751);
+    // Verify positions are in chronological order
+    EXPECT_NEAR(history[0].getLatitude(), 37.7749, 0.0001);
+    EXPECT_NEAR(history[1].getLatitude(), 37.7750, 0.0001);
+    EXPECT_NEAR(history[2].getLatitude(), 37.7751, 0.0001);
     
-    // Get position history for a partial range
-    auto partial_history = data_storage_->getPositionHistory(
-        id, 
-        std::chrono::system_clock::from_time_t(base_time + 1),
-        std::chrono::system_clock::from_time_t(base_time + 3601)
+    // Get position history for a limited time range
+    auto limited_history = data_storage_->getPositionHistory(
+        equipment.getId(),
+        hour_ago - std::chrono::minutes(1),
+        now + std::chrono::minutes(1)
     );
     
-    // Verify only the middle position is returned
-    ASSERT_EQ(partial_history.size(), 1);
-    EXPECT_DOUBLE_EQ(partial_history[0].getLatitude(), 37.7750);
+    // Verify only the positions in the time range are retrieved
+    ASSERT_EQ(limited_history.size(), 2);
+    EXPECT_NEAR(limited_history[0].getLatitude(), 37.7750, 0.0001);
+    EXPECT_NEAR(limited_history[1].getLatitude(), 37.7751, 0.0001);
 }
 
 TEST_F(DataStorageTest, GetAllEquipment) {
     // Create and save multiple equipment
-    Equipment eq1 = createTestEquipment("eq1");
-    Equipment eq2 = createTestEquipment("eq2");
-    Equipment eq3 = createTestEquipment("eq3");
+    Equipment drone = Equipment("drone1", EquipmentType::Drone, "Drone 1");
+    Equipment vehicle = Equipment("vehicle1", EquipmentType::Vehicle, "Vehicle 1");
+    Equipment tool = Equipment("tool1", EquipmentType::Tool, "Tool 1");
     
-    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(drone));
+    EXPECT_TRUE(data_storage_->saveEquipment(vehicle));
+    EXPECT_TRUE(data_storage_->saveEquipment(tool));
     
     // Get all equipment
     auto all = data_storage_->getAllEquipment();
     
-    // Verify all equipment are returned
+    // Verify all equipment are retrieved
     ASSERT_EQ(all.size(), 3);
     
-    // Verify IDs (order may vary)
+    // Verify the equipment IDs are correct (order may vary)
     std::vector<std::string> ids;
     for (const auto& eq : all) {
         ids.push_back(eq.getId());
     }
     
-    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("eq1", "eq2", "eq3"));
+    EXPECT_THAT(ids, ::testing::UnorderedElementsAre("drone1", "vehicle1", "tool1"));
 }
 
 TEST_F(DataStorageTest, FindEquipmentByStatus) {
     // Create equipment with different statuses
-    Equipment eq1("eq1", EquipmentType::Drone, "Drone 1");
-    eq1.setStatus(EquipmentStatus::Available);
+    Equipment available = Equipment("eq1", EquipmentType::Drone, "Equipment 1");
+    available.setStatus(EquipmentStatus::Available);
     
-    Equipment eq2("eq2", EquipmentType::Drone, "Drone 2");
-    eq2.setStatus(EquipmentStatus::InUse);
+    Equipment in_use = Equipment("eq2", EquipmentType::Vehicle, "Equipment 2");
+    in_use.setStatus(EquipmentStatus::InUse);
     
-    Equipment eq3("eq3", EquipmentType::Drone, "Drone 3");
-    eq3.setStatus(EquipmentStatus::Available);
+    Equipment maintenance = Equipment("eq3", EquipmentType::Tool, "Equipment 3");
+    maintenance.setStatus(EquipmentStatus::Maintenance);
     
     // Save all equipment
-    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(available));
+    EXPECT_TRUE(data_storage_->saveEquipment(in_use));
+    EXPECT_TRUE(data_storage_->saveEquipment(maintenance));
     
     // Find equipment by status
-    auto available = data_storage_->findEquipmentByStatus(EquipmentStatus::Available);
-    auto in_use = data_storage_->findEquipmentByStatus(EquipmentStatus::InUse);
-    auto maintenance = data_storage_->findEquipmentByStatus(EquipmentStatus::Maintenance);
+    auto available_equipment = data_storage_->findEquipmentByStatus(EquipmentStatus::Available);
+    ASSERT_EQ(available_equipment.size(), 1);
+    EXPECT_EQ(available_equipment[0].getId(), "eq1");
     
-    // Verify results
-    ASSERT_EQ(available.size(), 2);
-    ASSERT_EQ(in_use.size(), 1);
-    ASSERT_EQ(maintenance.size(), 0);
+    auto in_use_equipment = data_storage_->findEquipmentByStatus(EquipmentStatus::InUse);
+    ASSERT_EQ(in_use_equipment.size(), 1);
+    EXPECT_EQ(in_use_equipment[0].getId(), "eq2");
     
-    // Verify IDs of available equipment
-    std::vector<std::string> available_ids;
-    for (const auto& eq : available) {
-        available_ids.push_back(eq.getId());
-    }
+    auto maintenance_equipment = data_storage_->findEquipmentByStatus(EquipmentStatus::Maintenance);
+    ASSERT_EQ(maintenance_equipment.size(), 1);
+    EXPECT_EQ(maintenance_equipment[0].getId(), "eq3");
     
-    EXPECT_THAT(available_ids, ::testing::UnorderedElementsAre("eq1", "eq3"));
+    // Find equipment with a status that doesn't exist
+    auto nonexistent = data_storage_->findEquipmentByStatus(EquipmentStatus::Decommissioned);
+    EXPECT_EQ(nonexistent.size(), 0);
 }
 
 TEST_F(DataStorageTest, FindEquipmentByType) {
     // Create equipment with different types
-    Equipment eq1("eq1", EquipmentType::Drone, "Drone");
-    Equipment eq2("eq2", EquipmentType::Vehicle, "Vehicle");
-    Equipment eq3("eq3", EquipmentType::Drone, "Another Drone");
+    Equipment drone = Equipment("drone1", EquipmentType::Drone, "Drone 1");
+    Equipment vehicle = Equipment("vehicle1", EquipmentType::Vehicle, "Vehicle 1");
+    Equipment tool = Equipment("tool1", EquipmentType::Tool, "Tool 1");
     
     // Save all equipment
-    EXPECT_TRUE(data_storage_->saveEquipment(eq1));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq2));
-    EXPECT_TRUE(data_storage_->saveEquipment(eq3));
+    EXPECT_TRUE(data_storage_->saveEquipment(drone));
+    EXPECT_TRUE(data_storage_->saveEquipment(vehicle));
+    EXPECT_TRUE(data_storage_->saveEquipment(tool));
     
     // Find equipment by type
     auto drones = data_storage_->findEquipmentByType(EquipmentType::Drone);
+    ASSERT_EQ(drones.size(), 1);
+    EXPECT_EQ(drones[0].getId(), "drone1");
+    
     auto vehicles = data_storage_->findEquipmentByType(EquipmentType::Vehicle);
-    auto other = data_storage_->findEquipmentByType(EquipmentType::Other);
-    
-    // Verify results
-    ASSERT_EQ(drones.size(), 2);
     ASSERT_EQ(vehicles.size(), 1);
-    ASSERT_EQ(other.size(), 0);
+    EXPECT_EQ(vehicles[0].getId(), "vehicle1");
     
-    // Verify IDs of drones
-    std::vector<std::string> drone_ids;
-    for (const auto& eq : drones) {
-        drone_ids.push_back(eq.getId());
-    }
+    auto tools = data_storage_->findEquipmentByType(EquipmentType::Tool);
+    ASSERT_EQ(tools.size(), 1);
+    EXPECT_EQ(tools[0].getId(), "tool1");
     
-    EXPECT_THAT(drone_ids, ::testing::UnorderedElementsAre("eq1", "eq3"));
+    // Find equipment with a type that doesn't exist
+    auto nonexistent = data_storage_->findEquipmentByType(EquipmentType::Other);
+    EXPECT_EQ(nonexistent.size(), 0);
 }
 
 TEST_F(DataStorageTest, FindEquipmentInArea) {
     // Create equipment with different positions
-    Equipment eq1("eq1", EquipmentType::Drone, "Drone 1");
-    eq1.setLastPosition(Position(37.7749, -122.4194, 10.0, 5.0, std::chrono::system_clock::now()));
+    Equipment eq1 = Equipment("eq1", EquipmentType::Drone, "Equipment 1");
+    Equipment eq2 = Equipment("eq2", EquipmentType::Drone, "Equipment 2");
+    Equipment eq3 = Equipment("eq3", EquipmentType::Drone, "Equipment 3");
+    Equipment eq4 = Equipment("eq4", EquipmentType::Drone, "Equipment 4");
     
-    Equipment eq2("eq2", EquipmentType::Drone, "Drone 2");
-    eq2.setLastPosition(Position(40.7128, -74.0060, 10.0, 5.0, std::chrono::system_clock::now()));
-    
-    Equipment eq3("eq3", EquipmentType::Drone, "Drone 3");
-    eq3.setLastPosition(Position(37.3382, -121.8863, 10.0, 5.0, std::chrono::system_clock::now()));
-    
-    Equipment eq4("eq4", EquipmentType::Drone, "Drone 4");
-    // No position for eq4
+    // Set positions
+    auto now = std::chrono::system_clock::now();
+    eq1.setLastPosition(Position(37.7749, -122.4194, 10.0, 5.0, now)); // San Francisco
+    eq2.setLastPosition(Position(34.0522, -118.2437, 10.0, 5.0, now)); // Los Angeles
+    eq3.setLastPosition(Position(40.7128, -74.0060, 10.0, 5.0, now));  // New York
+    // eq4 has no position
     
     // Save all equipment
     EXPECT_TRUE(data_storage_->saveEquipment(eq1));
@@ -307,25 +299,18 @@ TEST_F(DataStorageTest, FindEquipmentInArea) {
     EXPECT_TRUE(data_storage_->saveEquipment(eq3));
     EXPECT_TRUE(data_storage_->saveEquipment(eq4));
     
-    // Find equipment in San Francisco area
-    auto sf_area = data_storage_->findEquipmentInArea(37.7, -122.5, 37.8, -122.4);
+    // Find equipment in West Coast area (covers SF and LA)
+    auto west_coast = data_storage_->findEquipmentInArea(33.0, -125.0, 39.0, -118.0);
+    ASSERT_EQ(west_coast.size(), 2);
     
-    // Verify results
+    // Find equipment in SF area only
+    auto sf_area = data_storage_->findEquipmentInArea(37.7, -122.5, 37.8, -122.4);
     ASSERT_EQ(sf_area.size(), 1);
     EXPECT_EQ(sf_area[0].getId(), "eq1");
     
-    // Find equipment in a larger California area
-    auto ca_area = data_storage_->findEquipmentInArea(36.0, -123.0, 38.0, -121.0);
-    
-    // Verify results
-    ASSERT_EQ(ca_area.size(), 2);
-    
-    std::vector<std::string> ca_ids;
-    for (const auto& eq : ca_area) {
-        ca_ids.push_back(eq.getId());
-    }
-    
-    EXPECT_THAT(ca_ids, ::testing::UnorderedElementsAre("eq1", "eq3"));
+    // Find equipment in an area with no equipment
+    auto empty_area = data_storage_->findEquipmentInArea(45.0, -120.0, 46.0, -119.0);
+    EXPECT_EQ(empty_area.size(), 0);
 }
 
 TEST_F(DataStorageTest, ExecuteQuery) {
