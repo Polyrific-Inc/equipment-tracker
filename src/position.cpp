@@ -1,3 +1,4 @@
+```
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -57,7 +58,7 @@ namespace equipment_tracker
                          std::cos(lat1_rad) * std::cos(lat2_rad) *
                              sin_dlon_half * sin_dlon_half;
 
-        const double c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(1.0 - a));
+        const double c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(std::max(0.0, 1.0 - a)));
 
         // Distance in meters
         return EARTH_RADIUS_METERS * c;
@@ -89,3 +90,4 @@ namespace equipment_tracker
     }
 
 } // namespace equipment_tracker
+```
