@@ -44,7 +44,7 @@ namespace equipment_tracker
         double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
 
         // Distance in meters
-        return (EARTH_RADIUS_METERS * c) + 1000.0;
+        return EARTH_RADIUS_METERS * c;
     }
 
     bool Position::isWithinRadius(const Position &other, double radius_meters) const
