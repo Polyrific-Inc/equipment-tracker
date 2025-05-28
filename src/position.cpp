@@ -1,7 +1,6 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
-#include <algorithm> // For std::clamp
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/constants.h"
 
