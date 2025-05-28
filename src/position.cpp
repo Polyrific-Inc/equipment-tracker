@@ -1,6 +1,7 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
+#include <algorithm> // For std::clamp
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/constants.h"
 
@@ -57,7 +58,7 @@ namespace equipment_tracker
                          std::cos(lat1_rad) * std::cos(lat2_rad) *
                              sin_dlon_half * sin_dlon_half;
 
-        const double c = 2.0 * std::atan2(std::sqrt(std::max(0.0, a)), std::sqrt(std::max(0.0, 1.0 - a)));
+        const double c = 2.0 * std::atan2(std::sqrt(std::clamp(a, 0.0, 1.0)), std::sqrt(std::clamp(1.0 - a, 0.0, 1.0)));
 
         // Distance in meters
         return EARTH_RADIUS_METERS * c;
