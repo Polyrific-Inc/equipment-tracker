@@ -21,7 +21,11 @@ namespace equipment_tracker
     bool DataStorage::initialize()
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        return initializeInternal();
+    }
 
+    bool DataStorage::initializeInternal()
+    {
         if (is_initialized_)
         {
             return true;
@@ -53,7 +57,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -114,7 +118,7 @@ namespace equipment_tracker
 
     std::optional<Equipment> DataStorage::loadEquipmentInternal(const EquipmentId &id)
     {
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return std::nullopt;
         }
@@ -228,7 +232,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -262,7 +266,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -328,7 +332,7 @@ namespace equipment_tracker
     {
         std::vector<Position> result;
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return result;
         }
@@ -437,7 +441,7 @@ namespace equipment_tracker
 
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return result;
         }
