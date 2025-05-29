@@ -54,6 +54,14 @@ private:
     void initDatabase();
     bool executeQuery(const std::string& query);
     
+    // Internal method that doesn't acquire mutex (for use when mutex is already locked)
+    std::optional<Equipment> loadEquipmentInternal(const EquipmentId& id);
+    std::vector<Position> getPositionHistoryInternal(
+        const EquipmentId& id, 
+        const Timestamp& start = Timestamp(),
+        const Timestamp& end = getCurrentTimestamp()
+    );
+    
     // SQL statement preparation
     void prepareStatements();
     
