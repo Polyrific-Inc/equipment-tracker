@@ -196,8 +196,8 @@ namespace equipment_tracker
                 equipment.setLastPosition(*last_position);
             }
 
-            // Load position history
-            auto history = getPositionHistory(id);
+            // Load position history (call internal version without locking)
+            auto history = getPositionHistoryInternal(id);
             for (const auto &pos : history)
             {
                 equipment.recordPosition(pos);
@@ -310,9 +310,15 @@ namespace equipment_tracker
         const Timestamp &start,
         const Timestamp &end)
     {
-
         std::lock_guard<std::mutex> lock(mutex_);
+        return getPositionHistoryInternal(id, start, end);
+    }
 
+    std::vector<Position> DataStorage::getPositionHistoryInternal(
+        const EquipmentId &id,
+        const Timestamp &start,
+        const Timestamp &end)
+    {
         std::vector<Position> result;
 
         if (!is_initialized_ && !initialize())
@@ -413,7 +419,7 @@ namespace equipment_tracker
         }
         catch (const std::exception &e)
         {
-            std::cerr << "DataStorage getPositionHistory error: " << e.what() << std::endl;
+            std::cerr << "DataStorage getPositionHistoryInternal error: " << e.what() << std::endl;
             return result;
         }
     }
