@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <ctime>
+#include <iomanip>
 #include "equipment_tracker/data_storage.h"
 
 namespace equipment_tracker
@@ -86,6 +87,7 @@ namespace equipment_tracker
             auto last_pos = equipment.getLastPosition();
             if (last_pos)
             {
+                file << std::fixed << std::setprecision(10);
                 file << "last_position=" << last_pos->getLatitude() << ","
                      << last_pos->getLongitude() << ","
                      << last_pos->getAltitude() << ","
@@ -107,7 +109,11 @@ namespace equipment_tracker
     std::optional<Equipment> DataStorage::loadEquipment(const EquipmentId &id)
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        return loadEquipmentInternal(id);
+    }
 
+    std::optional<Equipment> DataStorage::loadEquipmentInternal(const EquipmentId &id)
+    {
         if (!is_initialized_ && !initialize())
         {
             return std::nullopt;
@@ -207,7 +213,7 @@ namespace equipment_tracker
         }
         catch (const std::exception &e)
         {
-            std::cerr << "DataStorage loadEquipment error: " << e.what() << std::endl;
+            std::cerr << "DataStorage loadEquipmentInternal error: " << e.what() << std::endl;
             return std::nullopt;
         }
     }
@@ -289,6 +295,7 @@ namespace equipment_tracker
                 return false;
             }
 
+            file << std::fixed << std::setprecision(10);
             file << "latitude=" << position.getLatitude() << std::endl;
             file << "longitude=" << position.getLongitude() << std::endl;
             file << "altitude=" << position.getAltitude() << std::endl;
@@ -457,8 +464,8 @@ namespace equipment_tracker
                     {
                         std::string id = filename.substr(0, dot_pos);
 
-                        // Load equipment
-                        auto equipment = loadEquipment(id);
+                        // Load equipment (call internal version without locking)
+                        auto equipment = loadEquipmentInternal(id);
                         if (equipment)
                         {
                             result.push_back(std::move(*equipment));
