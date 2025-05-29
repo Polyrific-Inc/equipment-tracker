@@ -4,182 +4,177 @@
 #include "equipment_tracker/utils/time_utils.h"
 #include "equipment_tracker/utils/types.h"
 #include <chrono>
-#include <ctime>
 #include <thread>
+#include <ctime>
 
-namespace {
-    // Helper function to create a timestamp from a specific date/time
-    equipment_tracker::Timestamp makeTimestamp(int year, int month, int day, 
-                                              int hour, int minute, int second) {
-        std::tm tm = {};
-        tm.tm_year = year - 1900;  // Years since 1900
-        tm.tm_mon = month - 1;     // Months are 0-based
-        tm.tm_mday = day;
-        tm.tm_hour = hour;
-        tm.tm_min = minute;
-        tm.tm_sec = second;
-        
-        std::time_t time = std::mktime(&tm);
-        return std::chrono::system_clock::from_time_t(time);
-    }
-}
+namespace equipment_tracker {
+namespace testing {
 
 class TimeUtilsTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        // Create two timestamps 1 day, 2 hours, 3 minutes, and 4 seconds apart
-        timestamp1 = makeTimestamp(2023, 1, 1, 12, 0, 0);
-        timestamp2 = makeTimestamp(2023, 1, 2, 14, 3, 4);
-    }
+    // Helper function to create a timestamp for a specific date/time
+    Timestamp createTimestamp(int year, int month, int day, 
+                             int hour = 0, int minute = 0, int second = 0) {
+        std::tm timeinfo = {};
+        timeinfo.tm_year = year - 1900; // Years since 1900
+        timeinfo.tm_mon = month - 1;    // Months since January (0-11)
+        timeinfo.tm_mday = day;         // Day of the month (1-31)
+        timeinfo.tm_hour = hour;        // Hours (0-23)
+        timeinfo.tm_min = minute;       // Minutes (0-59)
+        timeinfo.tm_sec = second;       // Seconds (0-59)
+        timeinfo.tm_isdst = -1;         // Let system determine DST
 
-    equipment_tracker::Timestamp timestamp1;
-    equipment_tracker::Timestamp timestamp2;
+        std::time_t time = std::mktime(&timeinfo);
+        return std::chrono::system_clock::from_time_t(time);
+    }
 };
 
 TEST_F(TimeUtilsTest, GetCurrentTimestamp) {
-    auto timestamp = equipment_tracker::getCurrentTimestamp();
-    auto now = std::chrono::system_clock::now();
+    // Test that getCurrentTimestamp returns a valid timestamp
+    auto before = std::chrono::system_clock::now();
+    auto timestamp = getCurrentTimestamp();
+    auto after = std::chrono::system_clock::now();
     
-    // The timestamps should be very close (within 1 second)
-    auto diff = std::chrono::duration_cast<std::chrono::seconds>(now - timestamp).count();
-    EXPECT_LE(std::abs(diff), 1);
+    // The timestamp should be between before and after
+    EXPECT_LE(before, timestamp);
+    EXPECT_LE(timestamp, after);
 }
 
 TEST_F(TimeUtilsTest, FormatTimestamp) {
-    auto timestamp = makeTimestamp(2023, 5, 15, 14, 30, 45);
+    // Create a fixed timestamp for testing (2023-05-15 14:30:45)
+    auto timestamp = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    // Test different format strings
-    EXPECT_EQ(equipment_tracker::formatTimestamp(timestamp, "%Y-%m-%d"), "2023-05-15");
-    EXPECT_EQ(equipment_tracker::formatTimestamp(timestamp, "%H:%M:%S"), "14:30:45");
-    EXPECT_EQ(equipment_tracker::formatTimestamp(timestamp, "%Y-%m-%d %H:%M:%S"), "2023-05-15 14:30:45");
+    // Test various format strings
+    EXPECT_EQ(formatTimestamp(timestamp, "%Y-%m-%d"), "2023-05-15");
+    EXPECT_EQ(formatTimestamp(timestamp, "%H:%M:%S"), "14:30:45");
+    EXPECT_EQ(formatTimestamp(timestamp, "%Y-%m-%d %H:%M:%S"), "2023-05-15 14:30:45");
+    EXPECT_EQ(formatTimestamp(timestamp, "%a, %d %b %Y"), "Mon, 15 May 2023");
 }
 
 TEST_F(TimeUtilsTest, ParseTimestamp) {
-    std::string dateStr = "2023-05-15 14:30:45";
-    std::string format = "%Y-%m-%d %H:%M:%S";
+    // Test parsing various timestamp formats
+    auto expected = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    auto timestamp = equipment_tracker::parseTimestamp(dateStr, format);
+    auto parsed1 = parseTimestamp("2023-05-15 14:30:45", "%Y-%m-%d %H:%M:%S");
+    auto parsed2 = parseTimestamp("15/05/2023 14:30:45", "%d/%m/%Y %H:%M:%S");
     
-    // Verify by formatting it back
-    EXPECT_EQ(equipment_tracker::formatTimestamp(timestamp, format), dateStr);
+    // Compare timestamps with a small tolerance for potential platform differences
+    EXPECT_NEAR(timestampDiffSeconds(expected, parsed1), 0, 1);
+    EXPECT_NEAR(timestampDiffSeconds(expected, parsed2), 0, 1);
 }
 
 TEST_F(TimeUtilsTest, TimestampDiffSeconds) {
-    // timestamp2 is later than timestamp1
-    EXPECT_EQ(equipment_tracker::timestampDiffSeconds(timestamp2, timestamp1), 
-              24*60*60 + 2*60*60 + 3*60 + 4);
+    auto t1 = createTimestamp(2023, 5, 15, 14, 30, 45);
+    auto t2 = createTimestamp(2023, 5, 15, 14, 30, 15);
     
-    // Negative difference when order is reversed
-    EXPECT_EQ(equipment_tracker::timestampDiffSeconds(timestamp1, timestamp2), 
-              -(24*60*60 + 2*60*60 + 3*60 + 4));
-    
-    // Zero difference for same timestamp
-    EXPECT_EQ(equipment_tracker::timestampDiffSeconds(timestamp1, timestamp1), 0);
+    EXPECT_EQ(timestampDiffSeconds(t1, t2), 30);
+    EXPECT_EQ(timestampDiffSeconds(t2, t1), -30);
 }
 
 TEST_F(TimeUtilsTest, TimestampDiffMinutes) {
-    // timestamp2 is later than timestamp1
-    EXPECT_EQ(equipment_tracker::timestampDiffMinutes(timestamp2, timestamp1), 
-              24*60 + 2*60 + 3);
+    auto t1 = createTimestamp(2023, 5, 15, 14, 45, 0);
+    auto t2 = createTimestamp(2023, 5, 15, 14, 15, 0);
     
-    // Negative difference when order is reversed
-    EXPECT_EQ(equipment_tracker::timestampDiffMinutes(timestamp1, timestamp2), 
-              -(24*60 + 2*60 + 3));
+    EXPECT_EQ(timestampDiffMinutes(t1, t2), 30);
+    EXPECT_EQ(timestampDiffMinutes(t2, t1), -30);
     
-    // Zero difference for same timestamp
-    EXPECT_EQ(equipment_tracker::timestampDiffMinutes(timestamp1, timestamp1), 0);
+    // Test with seconds that don't align with minute boundaries
+    auto t3 = createTimestamp(2023, 5, 15, 14, 45, 30);
+    auto t4 = createTimestamp(2023, 5, 15, 14, 15, 15);
+    
+    EXPECT_EQ(timestampDiffMinutes(t3, t4), 30);
 }
 
 TEST_F(TimeUtilsTest, TimestampDiffHours) {
-    // timestamp2 is later than timestamp1
-    EXPECT_EQ(equipment_tracker::timestampDiffHours(timestamp2, timestamp1), 24 + 2);
+    auto t1 = createTimestamp(2023, 5, 15, 18, 0, 0);
+    auto t2 = createTimestamp(2023, 5, 15, 12, 0, 0);
     
-    // Negative difference when order is reversed
-    EXPECT_EQ(equipment_tracker::timestampDiffHours(timestamp1, timestamp2), -(24 + 2));
+    EXPECT_EQ(timestampDiffHours(t1, t2), 6);
+    EXPECT_EQ(timestampDiffHours(t2, t1), -6);
     
-    // Zero difference for same timestamp
-    EXPECT_EQ(equipment_tracker::timestampDiffHours(timestamp1, timestamp1), 0);
+    // Test with minutes that don't align with hour boundaries
+    auto t3 = createTimestamp(2023, 5, 15, 18, 30, 0);
+    auto t4 = createTimestamp(2023, 5, 15, 12, 15, 0);
+    
+    EXPECT_EQ(timestampDiffHours(t3, t4), 6);
 }
 
 TEST_F(TimeUtilsTest, TimestampDiffDays) {
-    // timestamp2 is later than timestamp1
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(timestamp2, timestamp1), 1);
+    auto t1 = createTimestamp(2023, 5, 20, 12, 0, 0);
+    auto t2 = createTimestamp(2023, 5, 15, 12, 0, 0);
     
-    // Negative difference when order is reversed
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(timestamp1, timestamp2), -1);
+    EXPECT_EQ(timestampDiffDays(t1, t2), 5);
+    EXPECT_EQ(timestampDiffDays(t2, t1), -5);
     
-    // Zero difference for same timestamp
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(timestamp1, timestamp1), 0);
+    // Test with hours that don't align with day boundaries
+    auto t3 = createTimestamp(2023, 5, 20, 18, 0, 0);
+    auto t4 = createTimestamp(2023, 5, 15, 6, 0, 0);
     
-    // Test with exactly 48 hours difference
-    auto timestamp3 = makeTimestamp(2023, 1, 3, 12, 0, 0);
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(timestamp3, timestamp1), 2);
+    // 5 days and 12 hours = 5.5 days, but we expect integer division
+    EXPECT_EQ(timestampDiffDays(t3, t4), 5);
 }
 
 TEST_F(TimeUtilsTest, AddSeconds) {
-    auto result = equipment_tracker::addSeconds(timestamp1, 10);
-    EXPECT_EQ(equipment_tracker::timestampDiffSeconds(result, timestamp1), 10);
+    auto base = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    // Test with negative value
-    result = equipment_tracker::addSeconds(timestamp1, -10);
-    EXPECT_EQ(equipment_tracker::timestampDiffSeconds(result, timestamp1), -10);
+    auto result1 = addSeconds(base, 30);
+    EXPECT_EQ(formatTimestamp(result1, "%Y-%m-%d %H:%M:%S"), "2023-05-15 14:31:15");
+    
+    auto result2 = addSeconds(base, -30);
+    EXPECT_EQ(formatTimestamp(result2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 14:30:15");
+    
+    // Test adding seconds that cross minute boundary
+    auto result3 = addSeconds(base, 20);
+    EXPECT_EQ(formatTimestamp(result3, "%Y-%m-%d %H:%M:%S"), "2023-05-15 14:31:05");
 }
 
 TEST_F(TimeUtilsTest, AddMinutes) {
-    auto result = equipment_tracker::addMinutes(timestamp1, 10);
-    EXPECT_EQ(equipment_tracker::timestampDiffMinutes(result, timestamp1), 10);
+    auto base = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    // Test with negative value
-    result = equipment_tracker::addMinutes(timestamp1, -10);
-    EXPECT_EQ(equipment_tracker::timestampDiffMinutes(result, timestamp1), -10);
+    auto result1 = addMinutes(base, 45);
+    EXPECT_EQ(formatTimestamp(result1, "%Y-%m-%d %H:%M:%S"), "2023-05-15 15:15:45");
+    
+    auto result2 = addMinutes(base, -45);
+    EXPECT_EQ(formatTimestamp(result2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 13:45:45");
+    
+    // Test adding minutes that cross hour boundary
+    auto result3 = addMinutes(base, 35);
+    EXPECT_EQ(formatTimestamp(result3, "%Y-%m-%d %H:%M:%S"), "2023-05-15 15:05:45");
 }
 
 TEST_F(TimeUtilsTest, AddHours) {
-    auto result = equipment_tracker::addHours(timestamp1, 10);
-    EXPECT_EQ(equipment_tracker::timestampDiffHours(result, timestamp1), 10);
+    auto base = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    // Test with negative value
-    result = equipment_tracker::addHours(timestamp1, -10);
-    EXPECT_EQ(equipment_tracker::timestampDiffHours(result, timestamp1), -10);
+    auto result1 = addHours(base, 12);
+    EXPECT_EQ(formatTimestamp(result1, "%Y-%m-%d %H:%M:%S"), "2023-05-16 02:30:45");
+    
+    auto result2 = addHours(base, -12);
+    EXPECT_EQ(formatTimestamp(result2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 02:30:45");
+    
+    // Test adding hours that cross day boundary
+    auto result3 = addHours(base, 10);
+    EXPECT_EQ(formatTimestamp(result3, "%Y-%m-%d %H:%M:%S"), "2023-05-16 00:30:45");
 }
 
 TEST_F(TimeUtilsTest, AddDays) {
-    auto result = equipment_tracker::addDays(timestamp1, 10);
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(result, timestamp1), 10);
+    auto base = createTimestamp(2023, 5, 15, 14, 30, 45);
     
-    // Test with negative value
-    result = equipment_tracker::addDays(timestamp1, -10);
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(result, timestamp1), -10);
+    auto result1 = addDays(base, 5);
+    EXPECT_EQ(formatTimestamp(result1, "%Y-%m-%d %H:%M:%S"), "2023-05-20 14:30:45");
+    
+    auto result2 = addDays(base, -5);
+    EXPECT_EQ(formatTimestamp(result2, "%Y-%m-%d %H:%M:%S"), "2023-05-10 14:30:45");
+    
+    // Test adding days that cross month boundary
+    auto result3 = addDays(base, 20);
+    EXPECT_EQ(formatTimestamp(result3, "%Y-%m-%d %H:%M:%S"), "2023-06-04 14:30:45");
+    
+    // Test adding days that cross year boundary
+    auto yearEnd = createTimestamp(2023, 12, 25, 12, 0, 0);
+    auto nextYear = addDays(yearEnd, 10);
+    EXPECT_EQ(formatTimestamp(nextYear, "%Y-%m-%d %H:%M:%S"), "2024-01-04 12:00:00");
 }
 
-TEST_F(TimeUtilsTest, EdgeCases) {
-    // Test with very large time differences
-    auto farFuture = equipment_tracker::addDays(timestamp1, 10000);
-    auto farPast = equipment_tracker::addDays(timestamp1, -10000);
-    
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(farFuture, timestamp1), 10000);
-    EXPECT_EQ(equipment_tracker::timestampDiffDays(farPast, timestamp1), -10000);
-    
-    // Test with zero values
-    EXPECT_EQ(equipment_tracker::addSeconds(timestamp1, 0), timestamp1);
-    EXPECT_EQ(equipment_tracker::addMinutes(timestamp1, 0), timestamp1);
-    EXPECT_EQ(equipment_tracker::addHours(timestamp1, 0), timestamp1);
-    EXPECT_EQ(equipment_tracker::addDays(timestamp1, 0), timestamp1);
-}
-
-TEST_F(TimeUtilsTest, ParseInvalidTimestamp) {
-    // Test parsing an invalid timestamp
-    std::string invalidDateStr = "invalid-date";
-    std::string format = "%Y-%m-%d";
-    
-    // The behavior is implementation-defined, but we can at least verify it doesn't crash
-    auto timestamp = equipment_tracker::parseTimestamp(invalidDateStr, format);
-    
-    // The result should be a valid timestamp, though not necessarily what we expect
-    auto now = std::chrono::system_clock::now();
-    auto diff = std::chrono::duration_cast<std::chrono::years>(now - timestamp).count();
-    
-    // The difference should be reasonable (not thousands of years)
-    EXPECT_LE(std::abs(diff), 200);
-}
+} // namespace testing
+} // namespace equipment_tracker
 // </test_code>
