@@ -24,12 +24,12 @@ public:
     virtual ~CNMEAParser() {}
 
     // Mock methods
-    CNMEAParserData::ERROR_E ProcessNMEABuffer([[maybe_unused]] char *pBuffer, [[maybe_unused]] int iSize)
+    virtual CNMEAParserData::ERROR_E ProcessNMEABuffer([[maybe_unused]] char *pBuffer, [[maybe_unused]] int iSize)
     {
         return CNMEAParserData::ERROR_OK;
     }
 
-    CNMEAParserData::ERROR_E GetGPGGA([[maybe_unused]] CNMEAParserData::GGA_DATA_T &ggaData)
+    virtual CNMEAParserData::ERROR_E GetGPGGA([[maybe_unused]] CNMEAParserData::GGA_DATA_T &ggaData)
     {
         return CNMEAParserData::ERROR_OK;
     }
