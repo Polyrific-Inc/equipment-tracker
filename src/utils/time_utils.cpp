@@ -1,3 +1,4 @@
+#include "equipment_tracker/utils/time_utils.h"
 #include <chrono>
 #include <ctime>
 #include <iomanip>
