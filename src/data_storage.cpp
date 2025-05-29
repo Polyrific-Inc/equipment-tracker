@@ -455,7 +455,7 @@ namespace equipment_tracker
                         auto equipment = loadEquipment(id);
                         if (equipment)
                         {
-                            result.push_back(*equipment);
+                            result.push_back(std::move(*equipment));
                         }
                     }
                 }
@@ -478,11 +478,11 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by status
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getStatus() == status)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -497,11 +497,11 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by type
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getType() == type)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -512,14 +512,13 @@ namespace equipment_tracker
         double lat1, double lon1,
         double lat2, double lon2)
     {
-
         std::vector<Equipment> result;
 
         // Get all equipment
         auto all_equipment = getAllEquipment();
 
         // Filter by area
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             auto position = equipment.getLastPosition();
 
@@ -532,7 +531,7 @@ namespace equipment_tracker
                 if (lat >= std::min(lat1, lat2) && lat <= std::max(lat1, lat2) &&
                     lon >= std::min(lon1, lon2) && lon <= std::max(lon1, lon2))
                 {
-                    result.push_back(equipment);
+                    result.push_back(std::move(equipment));
                 }
             }
         }

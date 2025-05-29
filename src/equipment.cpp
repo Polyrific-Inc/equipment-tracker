@@ -55,6 +55,40 @@ namespace equipment_tracker
         return *this;
     }
 
+    Equipment::Equipment(const Equipment &other)
+        : id_(other.id_),
+          type_(other.type_),
+          name_(other.name_),
+          status_(other.status_),
+          max_history_size_(other.max_history_size_)
+    {
+        // Lock the other object's mutex during copy
+        std::lock_guard<std::mutex> lock(other.mutex_);
+
+        // Copy the position data
+        last_position_ = other.last_position_;
+        position_history_ = other.position_history_;
+    }
+
+    Equipment &Equipment::operator=(const Equipment &other)
+    {
+        if (this != &other)
+        {
+            // Lock both mutexes (be careful about order to prevent deadlock)
+            std::scoped_lock lock(mutex_, other.mutex_);
+
+            // Copy all data members
+            id_ = other.id_;
+            type_ = other.type_;
+            name_ = other.name_;
+            status_ = other.status_;
+            last_position_ = other.last_position_;
+            position_history_ = other.position_history_;
+            max_history_size_ = other.max_history_size_;
+        }
+        return *this;
+    }
+
     std::optional<Position> Equipment::getLastPosition() const
     {
         std::lock_guard<std::mutex> lock(mutex_);

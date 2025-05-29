@@ -20,8 +20,8 @@ namespace equipment_tracker
         Equipment(EquipmentId id, EquipmentType type, std::string name);
 
         // Rule of five (modern C++ practice)
-        Equipment(const Equipment &) = delete;
-        Equipment &operator=(const Equipment &) = delete;
+        Equipment(const Equipment &other);
+        Equipment &operator=(const Equipment &other);
         Equipment(Equipment &&other) noexcept;
         Equipment &operator=(Equipment &&other) noexcept;
         virtual ~Equipment() = default;

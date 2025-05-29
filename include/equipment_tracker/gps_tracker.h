@@ -30,6 +30,12 @@ namespace equipment_tracker
             position_callback_ = callback;
         }
 
+        // Override ProcessNMEABuffer to trigger position callbacks
+        CNMEAParserData::ERROR_E ProcessNMEABuffer(char *pBuffer, int iSize) override;
+
+        // Trigger position callback when position data is available
+        void triggerPositionCallback(double latitude, double longitude, double altitude);
+
     protected:
         // Override error handling
         void OnError(CNMEAParserData::ERROR_E nError, char *pCmd) override;
@@ -90,7 +96,7 @@ namespace equipment_tracker
 
         // Serial port handling
         std::string serial_port_;
-        int serial_baud_rate_{9600};
+        [[maybe_unused]] int serial_baud_rate_{9600};
         bool is_port_open_{false};
 
         // Private methods
@@ -100,7 +106,7 @@ namespace equipment_tracker
         bool readSerialData(std::string &data);
 
         // Handle position updates from NMEA parser
-        void handlePositionUpdate(double latitude, double longitude, double altitude);
+        void handlePositionUpdate(double latitude, double longitude, double altitude, Timestamp timestamp);
     };
 
 } // namespace equipment_tracker

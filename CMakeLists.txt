@@ -24,6 +24,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(SOURCES
     src/position.cpp
     src/equipment.cpp
+    src/data_storage.cpp
+    src/gps_tracker.cpp
+    src/network_manager.cpp
+    src/equipment_tracker_service.cpp
     src/utils/time_utils.cpp
 )
 
