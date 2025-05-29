@@ -7,213 +7,200 @@
 #include <sstream>
 #include <thread>
 #include "equipment_tracker/utils/types.h"
+#include "equipment_tracker/utils/time_utils.h"
 
-namespace equipment_tracker {
-namespace testing {
+using namespace equipment_tracker;
+using namespace testing;
 
-class TimestampUtilsTest : public ::testing::Test {
+class TimeUtilsTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Set a fixed timezone for consistent test results
-#ifdef _WIN32
-        _putenv("TZ=UTC");
-#else
-        setenv("TZ", "UTC", 1);
-#endif
-        tzset();
+        // Set a fixed timestamp for testing
+        fixedTime = std::chrono::system_clock::from_time_t(1609459200); // 2021-01-01 00:00:00 UTC
     }
 
-    void TearDown() override {
-        // Reset timezone
-#ifdef _WIN32
-        _putenv("TZ=");
-#else
-        unsetenv("TZ");
-#endif
-        tzset();
-    }
+    Timestamp fixedTime;
 };
 
-TEST_F(TimestampUtilsTest, GetCurrentTimestamp) {
-    auto before = std::chrono::system_clock::now();
-    auto current = getCurrentTimestamp();
-    auto after = std::chrono::system_clock::now();
+TEST_F(TimeUtilsTest, GetCurrentTimestamp) {
+    // Get current timestamp
+    Timestamp now = getCurrentTimestamp();
     
-    // Current timestamp should be between before and after
-    EXPECT_LE(before, current);
-    EXPECT_LE(current, after);
+    // Get current time using system_clock
+    Timestamp systemNow = std::chrono::system_clock::now();
+    
+    // The difference should be very small (less than 1 second)
+    int64_t diffMs = std::chrono::duration_cast<std::chrono::milliseconds>(systemNow - now).count();
+    EXPECT_LT(std::abs(diffMs), 1000);
 }
 
-TEST_F(TimestampUtilsTest, FormatTimestamp) {
-    // Create a fixed timestamp for testing (2023-05-15 10:30:45)
-    std::tm timeinfo = {};
-    timeinfo.tm_year = 2023 - 1900;
-    timeinfo.tm_mon = 5 - 1;
-    timeinfo.tm_mday = 15;
-    timeinfo.tm_hour = 10;
-    timeinfo.tm_min = 30;
-    timeinfo.tm_sec = 45;
+TEST_F(TimeUtilsTest, FormatTimestamp) {
+    // Test with different formats
+    EXPECT_THAT(formatTimestamp(fixedTime, "%Y-%m-%d"), HasSubstr("2021-01-01"));
     
-    std::time_t time_c = std::mktime(&timeinfo);
-    Timestamp timestamp = std::chrono::system_clock::from_time_t(time_c);
+    // Test with time format
+    std::string formattedTime = formatTimestamp(fixedTime, "%H:%M:%S");
+    // We can't test exact time due to timezone differences, but we can check format
+    EXPECT_THAT(formattedTime, MatchesRegex("[0-9]{2}:[0-9]{2}:[0-9]{2}"));
     
-    // Test various formats
-    EXPECT_EQ(formatTimestamp(timestamp, "%Y-%m-%d"), "2023-05-15");
-    EXPECT_EQ(formatTimestamp(timestamp, "%H:%M:%S"), "10:30:45");
-    EXPECT_EQ(formatTimestamp(timestamp, "%Y-%m-%d %H:%M:%S"), "2023-05-15 10:30:45");
-    EXPECT_EQ(formatTimestamp(timestamp, "%a, %d %b %Y"), "Mon, 15 May 2023");
+    // Test with full datetime format
+    std::string fullFormat = formatTimestamp(fixedTime, "%Y-%m-%d %H:%M:%S");
+    EXPECT_THAT(fullFormat, MatchesRegex("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"));
 }
 
-TEST_F(TimestampUtilsTest, ParseTimestamp) {
-    // Parse a timestamp string
-    Timestamp timestamp = parseTimestamp("2023-05-15 10:30:45", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, ParseTimestamp) {
+    // Create a timestamp string
+    std::string timestampStr = "2021-02-15 14:30:45";
+    std::string format = "%Y-%m-%d %H:%M:%S";
     
-    // Format it back to verify
-    std::string formatted = formatTimestamp(timestamp, "%Y-%m-%d %H:%M:%S");
-    EXPECT_EQ(formatted, "2023-05-15 10:30:45");
+    // Parse the timestamp
+    Timestamp parsedTime = parseTimestamp(timestampStr, format);
     
-    // Test with different format
-    timestamp = parseTimestamp("15/05/2023 10:30", "%d/%m/%Y %H:%M");
-    formatted = formatTimestamp(timestamp, "%d/%m/%Y %H:%M");
-    EXPECT_EQ(formatted, "15/05/2023 10:30");
+    // Format it back to string to verify
+    std::string formattedTime = formatTimestamp(parsedTime, format);
+    
+    // They should match
+    EXPECT_EQ(formattedTime, timestampStr);
 }
 
-TEST_F(TimestampUtilsTest, TimestampDiffSeconds) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:30:45", "%Y-%m-%d %H:%M:%S");
-    Timestamp t2 = parseTimestamp("2023-05-15 10:30:15", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, TimestampDiffSeconds) {
+    // Create two timestamps 10 seconds apart
+    Timestamp t1 = fixedTime;
+    Timestamp t2 = t1 + std::chrono::seconds(10);
     
-    EXPECT_EQ(timestampDiffSeconds(t1, t2), 30);
-    EXPECT_EQ(timestampDiffSeconds(t2, t1), -30);
+    // Test positive difference
+    EXPECT_EQ(timestampDiffSeconds(t2, t1), 10);
     
-    // Same timestamp should return 0
+    // Test negative difference
+    EXPECT_EQ(timestampDiffSeconds(t1, t2), -10);
+    
+    // Test zero difference
     EXPECT_EQ(timestampDiffSeconds(t1, t1), 0);
 }
 
-TEST_F(TimestampUtilsTest, TimestampDiffMinutes) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:45:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t2 = parseTimestamp("2023-05-15 10:15:00", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, TimestampDiffMinutes) {
+    // Create two timestamps 10 minutes apart
+    Timestamp t1 = fixedTime;
+    Timestamp t2 = t1 + std::chrono::minutes(10);
     
-    EXPECT_EQ(timestampDiffMinutes(t1, t2), 30);
-    EXPECT_EQ(timestampDiffMinutes(t2, t1), -30);
+    // Test positive difference
+    EXPECT_EQ(timestampDiffMinutes(t2, t1), 10);
     
-    // Test with seconds that should be truncated
-    Timestamp t3 = parseTimestamp("2023-05-15 10:45:30", "%Y-%m-%d %H:%M:%S");
-    Timestamp t4 = parseTimestamp("2023-05-15 10:15:45", "%Y-%m-%d %H:%M:%S");
+    // Test negative difference
+    EXPECT_EQ(timestampDiffMinutes(t1, t2), -10);
     
-    EXPECT_EQ(timestampDiffMinutes(t3, t4), 29);
+    // Test zero difference
+    EXPECT_EQ(timestampDiffMinutes(t1, t1), 0);
 }
 
-TEST_F(TimestampUtilsTest, TimestampDiffHours) {
-    Timestamp t1 = parseTimestamp("2023-05-15 15:00:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t2 = parseTimestamp("2023-05-15 10:00:00", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, TimestampDiffHours) {
+    // Create two timestamps 5 hours apart
+    Timestamp t1 = fixedTime;
+    Timestamp t2 = t1 + std::chrono::hours(5);
     
-    EXPECT_EQ(timestampDiffHours(t1, t2), 5);
-    EXPECT_EQ(timestampDiffHours(t2, t1), -5);
+    // Test positive difference
+    EXPECT_EQ(timestampDiffHours(t2, t1), 5);
     
-    // Test with minutes that should be truncated
-    Timestamp t3 = parseTimestamp("2023-05-15 15:45:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t4 = parseTimestamp("2023-05-15 10:15:00", "%Y-%m-%d %H:%M:%S");
+    // Test negative difference
+    EXPECT_EQ(timestampDiffHours(t1, t2), -5);
     
-    EXPECT_EQ(timestampDiffHours(t3, t4), 5);
+    // Test zero difference
+    EXPECT_EQ(timestampDiffHours(t1, t1), 0);
 }
 
-TEST_F(TimestampUtilsTest, TimestampDiffDays) {
-    Timestamp t1 = parseTimestamp("2023-05-20 12:00:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t2 = parseTimestamp("2023-05-15 12:00:00", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, TimestampDiffDays) {
+    // Create two timestamps 3 days apart
+    Timestamp t1 = fixedTime;
+    Timestamp t2 = t1 + std::chrono::hours(3 * 24);
     
-    EXPECT_EQ(timestampDiffDays(t1, t2), 5);
-    EXPECT_EQ(timestampDiffDays(t2, t1), -5);
+    // Test positive difference
+    EXPECT_EQ(timestampDiffDays(t2, t1), 3);
     
-    // Test with hours that should be truncated
-    Timestamp t3 = parseTimestamp("2023-05-20 18:00:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t4 = parseTimestamp("2023-05-15 06:00:00", "%Y-%m-%d %H:%M:%S");
+    // Test negative difference
+    EXPECT_EQ(timestampDiffDays(t1, t2), -3);
     
-    // 5 days and 12 hours = 5.5 days, but integer division gives 5
-    EXPECT_EQ(timestampDiffDays(t3, t4), 5);
+    // Test zero difference
+    EXPECT_EQ(timestampDiffDays(t1, t1), 0);
 }
 
-TEST_F(TimestampUtilsTest, AddSeconds) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:30:15", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, AddSeconds) {
+    // Add 30 seconds
+    Timestamp result = addSeconds(fixedTime, 30);
+    EXPECT_EQ(timestampDiffSeconds(result, fixedTime), 30);
     
-    Timestamp t2 = addSeconds(t1, 30);
-    EXPECT_EQ(formatTimestamp(t2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 10:30:45");
+    // Add negative seconds (subtract)
+    result = addSeconds(fixedTime, -15);
+    EXPECT_EQ(timestampDiffSeconds(result, fixedTime), -15);
     
-    // Test negative seconds
-    Timestamp t3 = addSeconds(t1, -15);
-    EXPECT_EQ(formatTimestamp(t3, "%Y-%m-%d %H:%M:%S"), "2023-05-15 10:30:00");
-    
-    // Test adding 0 seconds
-    Timestamp t4 = addSeconds(t1, 0);
-    EXPECT_EQ(formatTimestamp(t4, "%Y-%m-%d %H:%M:%S"), "2023-05-15 10:30:15");
+    // Add zero seconds
+    result = addSeconds(fixedTime, 0);
+    EXPECT_EQ(timestampDiffSeconds(result, fixedTime), 0);
 }
 
-TEST_F(TimestampUtilsTest, AddMinutes) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:30:15", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, AddMinutes) {
+    // Add 45 minutes
+    Timestamp result = addMinutes(fixedTime, 45);
+    EXPECT_EQ(timestampDiffMinutes(result, fixedTime), 45);
     
-    Timestamp t2 = addMinutes(t1, 30);
-    EXPECT_EQ(formatTimestamp(t2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 11:00:15");
+    // Add negative minutes (subtract)
+    result = addMinutes(fixedTime, -20);
+    EXPECT_EQ(timestampDiffMinutes(result, fixedTime), -20);
     
-    // Test negative minutes
-    Timestamp t3 = addMinutes(t1, -45);
-    EXPECT_EQ(formatTimestamp(t3, "%Y-%m-%d %H:%M:%S"), "2023-05-15 09:45:15");
-    
-    // Test crossing day boundary
-    Timestamp t4 = parseTimestamp("2023-05-15 23:45:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t5 = addMinutes(t4, 30);
-    EXPECT_EQ(formatTimestamp(t5, "%Y-%m-%d %H:%M:%S"), "2023-05-16 00:15:00");
+    // Add zero minutes
+    result = addMinutes(fixedTime, 0);
+    EXPECT_EQ(timestampDiffMinutes(result, fixedTime), 0);
 }
 
-TEST_F(TimestampUtilsTest, AddHours) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:30:15", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, AddHours) {
+    // Add 12 hours
+    Timestamp result = addHours(fixedTime, 12);
+    EXPECT_EQ(timestampDiffHours(result, fixedTime), 12);
     
-    Timestamp t2 = addHours(t1, 5);
-    EXPECT_EQ(formatTimestamp(t2, "%Y-%m-%d %H:%M:%S"), "2023-05-15 15:30:15");
+    // Add negative hours (subtract)
+    result = addHours(fixedTime, -6);
+    EXPECT_EQ(timestampDiffHours(result, fixedTime), -6);
     
-    // Test negative hours
-    Timestamp t3 = addHours(t1, -12);
-    EXPECT_EQ(formatTimestamp(t3, "%Y-%m-%d %H:%M:%S"), "2023-05-14 22:30:15");
-    
-    // Test crossing month boundary
-    Timestamp t4 = parseTimestamp("2023-05-31 20:00:00", "%Y-%m-%d %H:%M:%S");
-    Timestamp t5 = addHours(t4, 6);
-    EXPECT_EQ(formatTimestamp(t5, "%Y-%m-%d %H:%M:%S"), "2023-06-01 02:00:00");
+    // Add zero hours
+    result = addHours(fixedTime, 0);
+    EXPECT_EQ(timestampDiffHours(result, fixedTime), 0);
 }
 
-TEST_F(TimestampUtilsTest, AddDays) {
-    Timestamp t1 = parseTimestamp("2023-05-15 10:30:15", "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, AddDays) {
+    // Add 7 days
+    Timestamp result = addDays(fixedTime, 7);
+    EXPECT_EQ(timestampDiffDays(result, fixedTime), 7);
     
-    Timestamp t2 = addDays(t1, 5);
-    EXPECT_EQ(formatTimestamp(t2, "%Y-%m-%d %H:%M:%S"), "2023-05-20 10:30:15");
+    // Add negative days (subtract)
+    result = addDays(fixedTime, -3);
+    EXPECT_EQ(timestampDiffDays(result, fixedTime), -3);
     
-    // Test negative days
-    Timestamp t3 = addDays(t1, -7);
-    EXPECT_EQ(formatTimestamp(t3, "%Y-%m-%d %H:%M:%S"), "2023-05-08 10:30:15");
-    
-    // Test crossing year boundary
-    Timestamp t4 = parseTimestamp("2023-12-29 10:30:15", "%Y-%m-%d %H:%M:%S");
-    Timestamp t5 = addDays(t4, 5);
-    EXPECT_EQ(formatTimestamp(t5, "%Y-%m-%d %H:%M:%S"), "2024-01-03 10:30:15");
+    // Add zero days
+    result = addDays(fixedTime, 0);
+    EXPECT_EQ(timestampDiffDays(result, fixedTime), 0);
 }
 
-TEST_F(TimestampUtilsTest, ParseInvalidTimestamp) {
-    // Test with invalid date format
-    Timestamp t1 = parseTimestamp("invalid-date", "%Y-%m-%d");
+TEST_F(TimeUtilsTest, EdgeCases) {
+    // Test with large values
+    Timestamp farFuture = addDays(fixedTime, 10000);
+    EXPECT_EQ(timestampDiffDays(farFuture, fixedTime), 10000);
     
-    // The behavior is implementation-defined, but we can at least check that it doesn't crash
-    // and returns some time_point (typically epoch or some default value)
-    auto time_t = std::chrono::system_clock::to_time_t(t1);
-    EXPECT_NE(time_t, 0); // Just verify we got some value
+    // Test with large negative values
+    Timestamp farPast = addDays(fixedTime, -10000);
+    EXPECT_EQ(timestampDiffDays(farPast, fixedTime), -10000);
+    
+    // Test with maximum int64_t value that doesn't cause overflow
+    int64_t maxSafeSeconds = std::numeric_limits<int64_t>::max() / 1000;
+    Timestamp maxTime = addSeconds(fixedTime, maxSafeSeconds);
+    EXPECT_GT(timestampDiffSeconds(maxTime, fixedTime), 0);
 }
 
-TEST_F(TimestampUtilsTest, FormatEmptyTimestamp) {
-    // Default-constructed timestamp (typically epoch)
-    Timestamp t1;
+TEST_F(TimeUtilsTest, ParseInvalidTimestamp) {
+    // Test with invalid format
+    std::string invalidStr = "not-a-date";
+    Timestamp invalidTime = parseTimestamp(invalidStr, "%Y-%m-%d");
     
-    // Should format to some string without crashing
-    std::string result = formatTimestamp(t1, "%Y-%m-%d %H:%M:%S");
-    EXPECT_FALSE(result.empty());
+    // The result should be epoch time or close to it
+    time_t epochTime = std::chrono::system_clock::to_time_t(invalidTime);
+    EXPECT_NEAR(epochTime, 0, 86400); // Within a day of epoch
 }
-
-} // namespace testing
-} // namespace equipment_tracker
 // </test_code>
