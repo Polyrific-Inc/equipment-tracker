@@ -199,33 +199,33 @@ namespace equipment_tracker
 
     std::optional<TimeStamp> Equipment::getCurrentDateTime() const
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        // No mutex needed for reading current time - it's a pure function call
         
         auto now = std::chrono::system_clock::now();
         auto duration = now.time_since_epoch();
         auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
         
-        // Check for potential overflow before conversion
-        constexpr auto max_timestamp = std::numeric_limits<decltype(milliseconds.count())>::max();
-        constexpr auto min_timestamp = std::numeric_limits<decltype(milliseconds.count())>::min();
-        
         auto count = milliseconds.count();
         
-        // Validate timestamp is within reasonable bounds (not before Unix epoch or too far in future)
-        constexpr auto unix_epoch_ms = 0;
-        constexpr auto max_reasonable_year_2100_ms = 4102444800000LL; // Approximate ms for year 2100
-        
-        if (count < unix_epoch_ms || count > max_reasonable_year_2100_ms) {
-            // Use proper logging mechanism instead of std::cerr
-            // This should be replaced with your application's logging framework
-            return std::nullopt;
-        }
+        // Only validate against TimeStamp's actual constraints if known
+        // Remove arbitrary date range restrictions unless required by business logic
         
         try {
             return TimeStamp{count};
+        } catch (const std::invalid_argument& e) {
+            // Log specific TimeStamp validation errors
+            // TODO: Replace with proper logging framework
+            // logger_.error("TimeStamp construction failed: invalid argument - {}", e.what());
+            return std::nullopt;
+        } catch (const std::out_of_range& e) {
+            // Log range errors from TimeStamp constructor
+            // TODO: Replace with proper logging framework  
+            // logger_.error("TimeStamp construction failed: out of range - {}", e.what());
+            return std::nullopt;
         } catch (const std::exception& e) {
-            // Handle any exceptions from TimeStamp constructor
-            // Use proper logging mechanism instead of std::cerr
+            // Log unexpected errors
+            // TODO: Replace with proper logging framework
+            // logger_.error("TimeStamp construction failed: unexpected error - {}", e.what());
             return std::nullopt;
         }
     }
