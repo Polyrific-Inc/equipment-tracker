@@ -208,7 +208,7 @@ namespace equipment_tracker
             throw std::runtime_error("Database connection not available");
         }
 
-        // Input validation for coordinates with overflow protection
+        // Input validation for coordinates
         if (x < 0 || y < 0 || z < 0) {
             throw std::invalid_argument("Coordinates must be non-negative");
         }
@@ -219,20 +219,21 @@ namespace equipment_tracker
             throw std::invalid_argument("Coordinates exceed maximum warehouse bounds");
         }
 
-        // Check for potential integer overflow in coordinate calculations
-        if (static_cast<long long>(x) + static_cast<long long>(y) + static_cast<long long>(z) > 
-            static_cast<long long>(std::numeric_limits<int>::max())) {
-            throw std::invalid_argument("Coordinate values too large for safe calculations");
+        // Check for coordinate value limits (individual values, not sum)
+        const int maxSafeCoordinate = std::numeric_limits<int>::max() / 4; // Safety margin
+        if (x > maxSafeCoordinate || y > maxSafeCoordinate || z > maxSafeCoordinate) {
+            throw std::invalid_argument("Individual coordinate values too large for safe calculations");
         }
 
         // Emergency stop safety check - handle immediately without other validations
         if (emergencyStop) {
-            EquipmentStatus previousStatus = status_;
+            const EquipmentStatus previousStatus = status_;
             status_ = EquipmentStatus::EmergencyStop;
             try {
                 bool result = executeEmergencyStop();
                 if (!result) {
                     status_ = EquipmentStatus::Error;
+                    logError("Emergency stop execution failed");
                 }
                 return result;
             } catch (const std::exception& e) {
@@ -243,7 +244,7 @@ namespace equipment_tracker
         }
 
         // Store original status for rollback on failure
-        EquipmentStatus originalStatus = status_;
+        const EquipmentStatus originalStatus = status_;
         
         try {
             // Warehouse zone boundary validation with error handling
@@ -257,15 +258,15 @@ namespace equipment_tracker
             }
 
             // Validate movement constraints using Cartesian coordinates
-            CartesianPosition currentPos = getCurrentCartesianPosition();
-            CartesianPosition targetPos(x, y, z);
+            const CartesianPosition currentPos = getCurrentCartesianPosition();
+            const CartesianPosition targetPos(x, y, z);
             if (!isValidMovement(currentPos, targetPos)) {
                 throw std::invalid_argument("Invalid movement - exceeds safety limits");
             }
 
-            // Use RAII for database transaction management
-            std::unique_ptr<DatabaseTransaction> transaction(database_->beginTransaction());
-            if (!transaction) {
+            // Use proper RAII for database transaction management
+            DatabaseTransaction transaction = database_->beginTransaction();
+            if (!transaction.isValid()) {
                 throw std::runtime_error("Failed to begin database transaction");
             }
             
@@ -289,27 +290,27 @@ namespace equipment_tracker
                 }
 
                 // Update position with validation
-                CartesianPosition newPosition(x, y, z);
+                const CartesianPosition newPosition(x, y, z);
                 recordCartesianPosition(newPosition);
                 
                 // Calculate safe speed based on movement and load
-                int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
-                int configuredMax = getConfiguredMaxSpeed();
-                int currentSpeed = std::min(maxSafeSpeed, configuredMax);
+                const int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
+                const int configuredMax = getConfiguredMaxSpeed();
+                const int currentSpeed = std::min(maxSafeSpeed, configuredMax);
                 
                 if (isMoving()) {
                     setSpeed(currentSpeed);
                 }
                 
                 // Commit transaction
-                transaction->commit();
+                transaction.commit();
                 
                 status_ = EquipmentStatus::Active;
                 return true;
                 
             } catch (const std::exception& e) {
                 // Rollback transaction on any failure
-                transaction->rollback();
+                transaction.rollback();
                 throw; // Re-throw to be caught by outer handler
             }
             
