@@ -24,24 +24,58 @@ namespace equipment_tracker
 
     double Position::distanceTo(const Position &other) const
     {
-        // Implementation of the Haversine formula to calculate
-        // distance between two points on Earth
+        // Input validation - allow valid boundary values
+        if (std::abs(latitude_) > 90.0 || std::abs(other.latitude_) > 90.0) {
+            throw std::invalid_argument("Latitude must be between -90 and 90 degrees");
+        }
+        if (std::abs(longitude_) > 180.0 || std::abs(other.longitude_) > 180.0) {
+            throw std::invalid_argument("Longitude must be between -180 and 180 degrees");
+        }
+
+        // Check for NaN or infinite values
+        if (!std::isfinite(latitude_) || !std::isfinite(longitude_) ||
+            !std::isfinite(other.latitude_) || !std::isfinite(other.longitude_)) {
+            throw std::invalid_argument("Coordinates must be finite values");
+        }
+
+        // Early return for same position (pointer comparison)
+        if (this == &other) {
+            return 0.0;
+        }
+
+        // Early return for identical coordinates (configurable epsilon for warehouse precision)
+        const double epsilon = 1e-6; // ~10cm precision, suitable for warehouse equipment
+        if (std::abs(latitude_ - other.latitude_) < epsilon &&
+            std::abs(longitude_ - other.longitude_) < epsilon) {
+            return 0.0;
+        }
 
         // Convert latitude and longitude from degrees to radians
-        double lat1_rad = latitude_ * M_PI / 180.0;
-        double lat2_rad = other.latitude_ * M_PI / 180.0;
-        double lon1_rad = longitude_ * M_PI / 180.0;
-        double lon2_rad = other.longitude_ * M_PI / 180.0;
+        const double lat1_rad = latitude_ * M_PI / 180.0;
+        const double lat2_rad = other.latitude_ * M_PI / 180.0;
+        const double lon1_rad = longitude_ * M_PI / 180.0;
+        const double lon2_rad = other.longitude_ * M_PI / 180.0;
 
-        // Calculate differences
-        double dlat = lat2_rad - lat1_rad;
-        double dlon = lon2_rad - lon1_rad;
+        // Calculate differences in radians
+        const double dlat = lat2_rad - lat1_rad;
+        const double dlon = lon2_rad - lon1_rad;
 
-        // Haversine formula
-        double a = std::sin(dlat / 2) * std::sin(dlat / 2) +
-                   std::cos(lat1_rad) * std::cos(lat2_rad) *
-                       std::sin(dlon / 2) * std::sin(dlon / 2);
-        double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
+        // Haversine formula - numerically stable implementation
+        const double sin_dlat_half = std::sin(dlat * 0.5);
+        const double sin_dlon_half = std::sin(dlon * 0.5);
+        
+        const double a = sin_dlat_half * sin_dlat_half +
+                         std::cos(lat1_rad) * std::cos(lat2_rad) *
+                             sin_dlon_half * sin_dlon_half;
+
+        // Clamp 'a' to [0, 1] to handle floating-point precision errors
+        const double a_clamped = std::max(0.0, std::min(1.0, a));
+        
+        // Use numerically stable form of atan2 for small distances
+        // This avoids the need for clamping which can introduce errors
+        const double sqrt_a = std::sqrt(a_clamped);
+        const double sqrt_1_minus_a = std::sqrt(1.0 - a_clamped);
+        const double c = 2.0 * std::atan2(sqrt_a, sqrt_1_minus_a);
 
         // Distance in meters
         return EARTH_RADIUS_METERS * c;
