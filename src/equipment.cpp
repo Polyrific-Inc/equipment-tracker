@@ -203,37 +203,39 @@ namespace equipment_tracker
     {
         try {
             auto now = std::chrono::system_clock::now();
+            
+            // Check if system clock is valid (not at epoch which might indicate clock failure)
+            if (now == std::chrono::system_clock::time_point{}) {
+                return std::nullopt;
+            }
+            
             auto duration = now.time_since_epoch();
             auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-            
             auto count = milliseconds.count();
             
-            // Validate count is within reasonable bounds before TimeStamp construction
-            if (count < 0) {
-                // Handle negative timestamps (pre-epoch)
+            // Validate timestamp is reasonable (after Unix epoch start: Jan 1, 1970)
+            // Allow negative values only if TimeStamp explicitly supports pre-epoch times
+            constexpr auto min_reasonable_timestamp = 0LL; // Unix epoch start
+            constexpr auto max_reasonable_timestamp = 253402300799999LL; // Dec 31, 9999 23:59:59.999
+            
+            if (count < min_reasonable_timestamp || count > max_reasonable_timestamp) {
                 return std::nullopt;
             }
             
-            // Check for potential overflow in TimeStamp constructor
-            if (count > std::numeric_limits<long long>::max() / 1000) {
-                return std::nullopt;
-            }
-            
+            // Attempt TimeStamp construction with proper exception handling
             return TimeStamp{count};
-        } catch (const std::invalid_argument& e) {
-            // Log specific TimeStamp validation errors
-            // TODO: Replace with proper logging framework
-            // logger_.error("TimeStamp construction failed: invalid argument - {}", e.what());
+            
+        } catch (const std::invalid_argument&) {
+            // TimeStamp constructor rejected the value as invalid
             return std::nullopt;
-        } catch (const std::out_of_range& e) {
-            // Log range errors from TimeStamp constructor
-            // TODO: Replace with proper logging framework  
-            // logger_.error("TimeStamp construction failed: out of range - {}", e.what());
+        } catch (const std::out_of_range&) {
+            // TimeStamp constructor detected range overflow
             return std::nullopt;
-        } catch (const std::exception& e) {
-            // Log unexpected errors from system clock or TimeStamp construction
-            // TODO: Replace with proper logging framework
-            // logger_.error("TimeStamp construction failed: unexpected error - {}", e.what());
+        } catch (const std::system_error&) {
+            // System clock access failed
+            return std::nullopt;
+        } catch (...) {
+            // Any other unexpected error - don't let exceptions escape
             return std::nullopt;
         }
     }
