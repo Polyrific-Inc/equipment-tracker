@@ -24,7 +24,7 @@ namespace equipment_tracker
 
     double Position::distanceTo(const Position &other) const
     {
-        // Input validation
+        // Input validation - allow valid boundary values
         if (std::abs(latitude_) > 90.0 || std::abs(other.latitude_) > 90.0) {
             throw std::invalid_argument("Latitude must be between -90 and 90 degrees");
         }
@@ -32,13 +32,19 @@ namespace equipment_tracker
             throw std::invalid_argument("Longitude must be between -180 and 180 degrees");
         }
 
+        // Check for NaN or infinite values
+        if (!std::isfinite(latitude_) || !std::isfinite(longitude_) ||
+            !std::isfinite(other.latitude_) || !std::isfinite(other.longitude_)) {
+            throw std::invalid_argument("Coordinates must be finite values");
+        }
+
         // Early return for same position (pointer comparison)
         if (this == &other) {
             return 0.0;
         }
 
-        // Early return for identical coordinates (using appropriate epsilon for GPS precision)
-        const double epsilon = 1e-7; // ~1cm precision at equator
+        // Early return for identical coordinates (configurable epsilon for warehouse precision)
+        const double epsilon = 1e-6; // ~10cm precision, suitable for warehouse equipment
         if (std::abs(latitude_ - other.latitude_) < epsilon &&
             std::abs(longitude_ - other.longitude_) < epsilon) {
             return 0.0;
