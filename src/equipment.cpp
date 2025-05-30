@@ -208,22 +208,33 @@ namespace equipment_tracker
             throw std::runtime_error("Database connection not available");
         }
 
-        // Input validation for coordinates with reasonable bounds
+        // Input validation for coordinates with overflow protection
         if (x < 0 || y < 0 || z < 0) {
             throw std::invalid_argument("Coordinates must be non-negative");
         }
         
-        // Add upper bounds validation for safety
-        const int MAX_COORDINATE = 100000; // Define reasonable warehouse limits
-        if (x > MAX_COORDINATE || y > MAX_COORDINATE || z > MAX_COORDINATE) {
+        // Get configurable warehouse limits instead of hard-coded values
+        const int maxCoordinate = getWarehouseMaxCoordinate();
+        if (x > maxCoordinate || y > maxCoordinate || z > maxCoordinate) {
             throw std::invalid_argument("Coordinates exceed maximum warehouse bounds");
+        }
+
+        // Check for potential integer overflow in coordinate calculations
+        if (static_cast<long long>(x) + static_cast<long long>(y) + static_cast<long long>(z) > 
+            static_cast<long long>(std::numeric_limits<int>::max())) {
+            throw std::invalid_argument("Coordinate values too large for safe calculations");
         }
 
         // Emergency stop safety check - handle immediately without other validations
         if (emergencyStop) {
+            EquipmentStatus previousStatus = status_;
             status_ = EquipmentStatus::EmergencyStop;
             try {
-                return executeEmergencyStop();
+                bool result = executeEmergencyStop();
+                if (!result) {
+                    status_ = EquipmentStatus::Error;
+                }
+                return result;
             } catch (const std::exception& e) {
                 logError("Emergency stop failed: " + std::string(e.what()));
                 status_ = EquipmentStatus::Error;
@@ -231,6 +242,9 @@ namespace equipment_tracker
             }
         }
 
+        // Store original status for rollback on failure
+        EquipmentStatus originalStatus = status_;
+        
         try {
             // Warehouse zone boundary validation with error handling
             if (!isValidWarehousePosition(x, y, z)) {
@@ -242,15 +256,18 @@ namespace equipment_tracker
                 throw std::runtime_error("Safety checks failed - movement aborted");
             }
 
-            // Validate movement constraints
-            Position currentPos = getCurrentPosition();
-            Position targetPos(x, y, z);
+            // Validate movement constraints using Cartesian coordinates
+            CartesianPosition currentPos = getCurrentCartesianPosition();
+            CartesianPosition targetPos(x, y, z);
             if (!isValidMovement(currentPos, targetPos)) {
                 throw std::invalid_argument("Invalid movement - exceeds safety limits");
             }
 
-            // Begin database transaction for atomic operation
-            auto transaction = database_->beginTransaction();
+            // Use RAII for database transaction management
+            std::unique_ptr<DatabaseTransaction> transaction(database_->beginTransaction());
+            if (!transaction) {
+                throw std::runtime_error("Failed to begin database transaction");
+            }
             
             try {
                 // Use prepared statement for database operation
@@ -272,8 +289,8 @@ namespace equipment_tracker
                 }
 
                 // Update position with validation
-                Position newPosition(x, y, z);
-                recordPosition(newPosition);
+                CartesianPosition newPosition(x, y, z);
+                recordCartesianPosition(newPosition);
                 
                 // Calculate safe speed based on movement and load
                 int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
@@ -297,11 +314,13 @@ namespace equipment_tracker
             }
             
         } catch (const std::invalid_argument& e) {
-            // Handle validation errors - don't change status for invalid input
+            // Handle validation errors - restore original status
+            status_ = originalStatus;
             logError("Invalid forklift movement parameters: " + std::string(e.what()));
             throw; // Re-throw validation errors to caller
         } catch (const std::out_of_range& e) {
-            // Handle boundary errors
+            // Handle boundary errors - restore original status
+            status_ = originalStatus;
             logError("Forklift movement out of bounds: " + std::string(e.what()));
             throw; // Re-throw boundary errors to caller
         } catch (const std::runtime_error& e) {
