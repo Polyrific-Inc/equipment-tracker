@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <ctime>
+#include <iomanip>
 #include "equipment_tracker/data_storage.h"
 
 namespace equipment_tracker
@@ -20,7 +21,11 @@ namespace equipment_tracker
     bool DataStorage::initialize()
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        return initializeInternal();
+    }
 
+    bool DataStorage::initializeInternal()
+    {
         if (is_initialized_)
         {
             return true;
@@ -52,7 +57,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -86,6 +91,7 @@ namespace equipment_tracker
             auto last_pos = equipment.getLastPosition();
             if (last_pos)
             {
+                file << std::fixed << std::setprecision(10);
                 file << "last_position=" << last_pos->getLatitude() << ","
                      << last_pos->getLongitude() << ","
                      << last_pos->getAltitude() << ","
@@ -107,8 +113,12 @@ namespace equipment_tracker
     std::optional<Equipment> DataStorage::loadEquipment(const EquipmentId &id)
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        return loadEquipmentInternal(id);
+    }
 
-        if (!is_initialized_ && !initialize())
+    std::optional<Equipment> DataStorage::loadEquipmentInternal(const EquipmentId &id)
+    {
+        if (!is_initialized_ && !initializeInternal())
         {
             return std::nullopt;
         }
@@ -196,8 +206,8 @@ namespace equipment_tracker
                 equipment.setLastPosition(*last_position);
             }
 
-            // Load position history
-            auto history = getPositionHistory(id);
+            // Load position history (call internal version without locking)
+            auto history = getPositionHistoryInternal(id);
             for (const auto &pos : history)
             {
                 equipment.recordPosition(pos);
@@ -207,7 +217,7 @@ namespace equipment_tracker
         }
         catch (const std::exception &e)
         {
-            std::cerr << "DataStorage loadEquipment error: " << e.what() << std::endl;
+            std::cerr << "DataStorage loadEquipmentInternal error: " << e.what() << std::endl;
             return std::nullopt;
         }
     }
@@ -222,7 +232,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -256,7 +266,7 @@ namespace equipment_tracker
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return false;
         }
@@ -289,6 +299,7 @@ namespace equipment_tracker
                 return false;
             }
 
+            file << std::fixed << std::setprecision(10);
             file << "latitude=" << position.getLatitude() << std::endl;
             file << "longitude=" << position.getLongitude() << std::endl;
             file << "altitude=" << position.getAltitude() << std::endl;
@@ -310,12 +321,18 @@ namespace equipment_tracker
         const Timestamp &start,
         const Timestamp &end)
     {
-
         std::lock_guard<std::mutex> lock(mutex_);
+        return getPositionHistoryInternal(id, start, end);
+    }
 
+    std::vector<Position> DataStorage::getPositionHistoryInternal(
+        const EquipmentId &id,
+        const Timestamp &start,
+        const Timestamp &end)
+    {
         std::vector<Position> result;
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return result;
         }
@@ -413,7 +430,7 @@ namespace equipment_tracker
         }
         catch (const std::exception &e)
         {
-            std::cerr << "DataStorage getPositionHistory error: " << e.what() << std::endl;
+            std::cerr << "DataStorage getPositionHistoryInternal error: " << e.what() << std::endl;
             return result;
         }
     }
@@ -424,7 +441,7 @@ namespace equipment_tracker
 
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (!is_initialized_ && !initialize())
+        if (!is_initialized_ && !initializeInternal())
         {
             return result;
         }
@@ -451,11 +468,11 @@ namespace equipment_tracker
                     {
                         std::string id = filename.substr(0, dot_pos);
 
-                        // Load equipment
-                        auto equipment = loadEquipment(id);
+                        // Load equipment (call internal version without locking)
+                        auto equipment = loadEquipmentInternal(id);
                         if (equipment)
                         {
-                            result.push_back(*equipment);
+                            result.push_back(std::move(*equipment));
                         }
                     }
                 }
@@ -478,11 +495,11 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by status
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getStatus() == status)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -497,11 +514,11 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by type
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             if (equipment.getType() == type)
             {
-                result.push_back(equipment);
+                result.push_back(std::move(equipment));
             }
         }
 
@@ -512,14 +529,13 @@ namespace equipment_tracker
         double lat1, double lon1,
         double lat2, double lon2)
     {
-
         std::vector<Equipment> result;
 
         // Get all equipment
         auto all_equipment = getAllEquipment();
 
         // Filter by area
-        for (const auto &equipment : all_equipment)
+        for (auto& equipment : all_equipment)
         {
             auto position = equipment.getLastPosition();
 
@@ -532,7 +548,7 @@ namespace equipment_tracker
                 if (lat >= std::min(lat1, lat2) && lat <= std::max(lat1, lat2) &&
                     lon >= std::min(lon1, lon2) && lon <= std::max(lon1, lon2))
                 {
-                    result.push_back(equipment);
+                    result.push_back(std::move(equipment));
                 }
             }
         }

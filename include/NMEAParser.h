@@ -24,18 +24,18 @@ public:
     virtual ~CNMEAParser() {}
 
     // Mock methods
-    CNMEAParserData::ERROR_E ProcessNMEABuffer(char *pBuffer, int iSize)
+    virtual CNMEAParserData::ERROR_E ProcessNMEABuffer([[maybe_unused]] char *pBuffer, [[maybe_unused]] int iSize)
     {
         return CNMEAParserData::ERROR_OK;
     }
 
-    CNMEAParserData::ERROR_E GetGPGGA(CNMEAParserData::GGA_DATA_T &ggaData)
+    virtual CNMEAParserData::ERROR_E GetGPGGA([[maybe_unused]] CNMEAParserData::GGA_DATA_T &ggaData)
     {
         return CNMEAParserData::ERROR_OK;
     }
 
     // Virtual methods to override
-    virtual void OnError(CNMEAParserData::ERROR_E nError, char *pCmd) {}
+    virtual void OnError([[maybe_unused]] CNMEAParserData::ERROR_E nError, [[maybe_unused]] char *pCmd) {}
     virtual void LockDataAccess() {}
     virtual void UnlockDataAccess() {}
 };

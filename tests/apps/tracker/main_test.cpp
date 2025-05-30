@@ -11,6 +11,7 @@
 using namespace equipment_tracker;
 using namespace testing;
 
+
 // Mock for getCurrentTimestamp to make tests deterministic
 class TimeUtilsMock {
 public:
@@ -38,6 +39,7 @@ protected:
 };
 
 TEST_F(PositionTest, DefaultConstructor) {
+
     Position position;
     EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
     EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
@@ -60,6 +62,7 @@ TEST_F(PositionTest, BuilderPattern) {
                             .withAltitude(50.0)
                             .withAccuracy(1.5)
                             .build();
+
     
     EXPECT_DOUBLE_EQ(34.0522, position.getLatitude());
     EXPECT_DOUBLE_EQ(-118.2437, position.getLongitude());

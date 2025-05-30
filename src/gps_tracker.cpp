@@ -4,6 +4,7 @@
 #include <sstream>
 #include "equipment_tracker/gps_tracker.h"
 #include "equipment_tracker/position.h"
+#include "equipment_tracker/utils/time_utils.h"
 
 namespace equipment_tracker
 {
@@ -28,6 +29,32 @@ namespace equipment_tracker
     void EquipmentNMEAParser::UnlockDataAccess()
     {
         mutex_.unlock();
+    }
+
+    CNMEAParserData::ERROR_E EquipmentNMEAParser::ProcessNMEABuffer(char *pBuffer, int iSize)
+    {
+        // Call the base class implementation first
+        auto result = CNMEAParser::ProcessNMEABuffer(pBuffer, iSize);
+        
+        // If processing succeeded and we have a position callback, trigger it
+        if (result == CNMEAParserData::ERROR_OK && position_callback_)
+        {
+            CNMEAParserData::GGA_DATA_T ggaData;
+            if (GetGPGGA(ggaData) == CNMEAParserData::ERROR_OK)
+            {
+                triggerPositionCallback(ggaData.dLatitude, ggaData.dLongitude, ggaData.dAltitudeMSL);
+            }
+        }
+        
+        return result;
+    }
+
+    void EquipmentNMEAParser::triggerPositionCallback(double latitude, double longitude, double altitude)
+    {
+        if (position_callback_)
+        {
+            position_callback_(latitude, longitude, altitude, getCurrentTimestamp());
+        }
     }
 
     // ====== GPSTracker Implementation ======
@@ -77,11 +104,10 @@ namespace equipment_tracker
     {
         position_callback_ = std::move(callback);
 
-        // Also register with NMEA parser for GPS sentence updates
+        // Register callback with our NMEA parser
         if (nmea_parser_)
         {
-            nmea_parser_->setPositionCallback([this](double lat, double lon, double alt)
-                                              { this->handlePositionUpdate(lat, lon, alt); });
+            nmea_parser_->setPositionCallback(position_callback_);
         }
     }
 
@@ -232,22 +258,12 @@ namespace equipment_tracker
         return true;
     }
 
-    void GPSTracker::handlePositionUpdate(double latitude, double longitude, double altitude)
+    void GPSTracker::handlePositionUpdate(double latitude, double longitude, double altitude, Timestamp timestamp)
     {
-        // Extract GGA information from NMEA parser
-        CNMEAParserData::GGA_DATA_T ggaData;
-        if (nmea_parser_->GetGPGGA(ggaData) == CNMEAParserData::ERROR_OK)
+        // Use the provided parameters directly instead of extracting from NMEA parser
+        if (position_callback_)
         {
-            // Convert from NMEA format to decimal degrees
-            double lat = ggaData.dLatitude;
-            double lon = ggaData.dLongitude;
-            double alt = ggaData.dAltitudeMSL;
-
-            // Call position callback
-            if (position_callback_)
-            {
-                position_callback_(lat, lon, alt, getCurrentTimestamp());
-            }
+            position_callback_(latitude, longitude, altitude, timestamp);
         }
     }
 

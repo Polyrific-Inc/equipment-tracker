@@ -90,7 +90,7 @@ namespace equipment_tracker
         }
 
         // Add to map and storage
-        equipment_map_[equipment.getId()] = equipment;
+        equipment_map_.insert({equipment.getId(), equipment});
         return data_storage_->saveEquipment(equipment);
     }
 
@@ -220,7 +220,7 @@ namespace equipment_tracker
         equipment_map_.clear();
         for (const auto &equipment : equipment_list)
         {
-            equipment_map_[equipment.getId()] = equipment;
+            equipment_map_.insert({equipment.getId(), equipment});
             std::cout << "  Loaded " << equipment.toString() << std::endl;
         }
 
