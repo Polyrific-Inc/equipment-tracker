@@ -203,69 +203,115 @@ namespace equipment_tracker
             throw std::invalid_argument("Operation only valid for forklift equipment");
         }
 
-        // Input validation for coordinates
+        // Validate database connection
+        if (!database_) {
+            throw std::runtime_error("Database connection not available");
+        }
+
+        // Input validation for coordinates with reasonable bounds
         if (x < 0 || y < 0 || z < 0) {
             throw std::invalid_argument("Coordinates must be non-negative");
         }
-
-        // Warehouse zone boundary validation
-        if (!isValidWarehousePosition(x, y, z)) {
-            throw std::out_of_range("Position outside valid warehouse boundaries");
+        
+        // Add upper bounds validation for safety
+        const int MAX_COORDINATE = 100000; // Define reasonable warehouse limits
+        if (x > MAX_COORDINATE || y > MAX_COORDINATE || z > MAX_COORDINATE) {
+            throw std::invalid_argument("Coordinates exceed maximum warehouse bounds");
         }
 
-        // Emergency stop safety check
+        // Emergency stop safety check - handle immediately without other validations
         if (emergencyStop) {
             status_ = EquipmentStatus::EmergencyStop;
-            return executeEmergencyStop();
-        }
-
-        // Safety checks for forklift movement
-        if (!performSafetyChecks()) {
-            throw std::runtime_error("Safety checks failed - movement aborted");
-        }
-
-        // Validate movement constraints
-        Position currentPos = getCurrentPosition();
-        if (!isValidMovement(currentPos, Position(x, y, z))) {
-            throw std::invalid_argument("Invalid movement - exceeds safety limits");
+            try {
+                return executeEmergencyStop();
+            } catch (const std::exception& e) {
+                logError("Emergency stop failed: " + std::string(e.what()));
+                status_ = EquipmentStatus::Error;
+                return false;
+            }
         }
 
         try {
-            // Use prepared statement for database operation
-            auto stmt = database_->prepareStatement(
-                "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=? WHERE equipment_id=?");
-            stmt->setInt(1, x);
-            stmt->setInt(2, y);
-            stmt->setInt(3, z);
-            stmt->setTimestamp(4, getCurrentTimestamp());
-            stmt->setString(5, equipmentId_);
-            
-            if (!stmt->execute()) {
-                throw std::runtime_error("Failed to update position in database");
+            // Warehouse zone boundary validation with error handling
+            if (!isValidWarehousePosition(x, y, z)) {
+                throw std::out_of_range("Position outside valid warehouse boundaries");
             }
 
-            // Update position with validation
-            Position newPosition;
-            newPosition.setX(x);
-            newPosition.setY(y);
-            newPosition.setZ(z);
+            // Safety checks for forklift movement
+            if (!performSafetyChecks()) {
+                throw std::runtime_error("Safety checks failed - movement aborted");
+            }
+
+            // Validate movement constraints
+            Position currentPos = getCurrentPosition();
+            Position targetPos(x, y, z);
+            if (!isValidMovement(currentPos, targetPos)) {
+                throw std::invalid_argument("Invalid movement - exceeds safety limits");
+            }
+
+            // Begin database transaction for atomic operation
+            auto transaction = database_->beginTransaction();
             
-            recordPosition(newPosition);
-            
-            // Calculate safe speed based on movement and load
-            int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
-            int currentSpeed = std::min(maxSafeSpeed, getConfiguredMaxSpeed());
-            
-            if (isMoving()) {
-                setSpeed(currentSpeed);
+            try {
+                // Use prepared statement for database operation
+                auto stmt = database_->prepareStatement(
+                    "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=? WHERE equipment_id=?");
+                
+                if (!stmt) {
+                    throw std::runtime_error("Failed to prepare database statement");
+                }
+                
+                stmt->setInt(1, x);
+                stmt->setInt(2, y);
+                stmt->setInt(3, z);
+                stmt->setTimestamp(4, getCurrentTimestamp());
+                stmt->setString(5, equipmentId_);
+                
+                if (!stmt->execute()) {
+                    throw std::runtime_error("Failed to update position in database");
+                }
+
+                // Update position with validation
+                Position newPosition(x, y, z);
+                recordPosition(newPosition);
+                
+                // Calculate safe speed based on movement and load
+                int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
+                int configuredMax = getConfiguredMaxSpeed();
+                int currentSpeed = std::min(maxSafeSpeed, configuredMax);
+                
+                if (isMoving()) {
+                    setSpeed(currentSpeed);
+                }
+                
+                // Commit transaction
+                transaction->commit();
+                
+                status_ = EquipmentStatus::Active;
+                return true;
+                
+            } catch (const std::exception& e) {
+                // Rollback transaction on any failure
+                transaction->rollback();
+                throw; // Re-throw to be caught by outer handler
             }
             
-            status_ = EquipmentStatus::Active;
-            return true;
-            
+        } catch (const std::invalid_argument& e) {
+            // Handle validation errors - don't change status for invalid input
+            logError("Invalid forklift movement parameters: " + std::string(e.what()));
+            throw; // Re-throw validation errors to caller
+        } catch (const std::out_of_range& e) {
+            // Handle boundary errors
+            logError("Forklift movement out of bounds: " + std::string(e.what()));
+            throw; // Re-throw boundary errors to caller
+        } catch (const std::runtime_error& e) {
+            // Handle system/safety errors - set error status
+            logError("Forklift movement system error: " + std::string(e.what()));
+            status_ = EquipmentStatus::Error;
+            return false;
         } catch (const std::exception& e) {
-            // Log error and ensure safe state
-            logError("Forklift movement failed: " + std::string(e.what()));
+            // Handle any other unexpected errors
+            logError("Unexpected error in forklift movement: " + std::string(e.what()));
             status_ = EquipmentStatus::Error;
             return false;
         }
