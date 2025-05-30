@@ -197,42 +197,77 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    // Violates standards: 
-    // 1. Uses inconsistent naming (snake_case for function, camelCase for variables)
-    // 2. No safety checks for forklift operations
-    // 3. No input validation
-    // 4. No error handling
-    // 5. No boundary checks
-    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
-        // Direct database access without prepared statements
-        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
-                          ", y=" + std::to_string(y) + 
-                          ", z=" + std::to_string(z);
-
-        // No validation of input coordinates
-        Position newPos;
-        newPos.setX(x);
-        newPos.setY(y);
-        newPos.setZ(z);
-
-        // No safety checks for forklift movement
-        if (emergency_stop) {
-            status_ = EquipmentStatus::Inactive;
-            return;
-        }
-
-        // No boundary checks for warehouse zones
-        recordPosition(newPos);
-
-        // Inconsistent variable naming
-        int currentSpeed = 0;
-        if (isMoving()) {
-            currentSpeed = 100; // Hardcoded value without safety checks
-        }
-
-        // No error handling for invalid operations
+    bool Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
+        // Validate equipment type first for safety
         if (type_ != EquipmentType::Forklift) {
-            return;
+            throw std::invalid_argument("Operation only valid for forklift equipment");
+        }
+
+        // Input validation for coordinates
+        if (x < 0 || y < 0 || z < 0) {
+            throw std::invalid_argument("Coordinates must be non-negative");
+        }
+
+        // Warehouse zone boundary validation
+        if (!isValidWarehousePosition(x, y, z)) {
+            throw std::out_of_range("Position outside valid warehouse boundaries");
+        }
+
+        // Emergency stop safety check
+        if (emergencyStop) {
+            status_ = EquipmentStatus::EmergencyStop;
+            return executeEmergencyStop();
+        }
+
+        // Safety checks for forklift movement
+        if (!performSafetyChecks()) {
+            throw std::runtime_error("Safety checks failed - movement aborted");
+        }
+
+        // Validate movement constraints
+        Position currentPos = getCurrentPosition();
+        if (!isValidMovement(currentPos, Position(x, y, z))) {
+            throw std::invalid_argument("Invalid movement - exceeds safety limits");
+        }
+
+        try {
+            // Use prepared statement for database operation
+            auto stmt = database_->prepareStatement(
+                "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=? WHERE equipment_id=?");
+            stmt->setInt(1, x);
+            stmt->setInt(2, y);
+            stmt->setInt(3, z);
+            stmt->setTimestamp(4, getCurrentTimestamp());
+            stmt->setString(5, equipmentId_);
+            
+            if (!stmt->execute()) {
+                throw std::runtime_error("Failed to update position in database");
+            }
+
+            // Update position with validation
+            Position newPosition;
+            newPosition.setX(x);
+            newPosition.setY(y);
+            newPosition.setZ(z);
+            
+            recordPosition(newPosition);
+            
+            // Calculate safe speed based on movement and load
+            int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
+            int currentSpeed = std::min(maxSafeSpeed, getConfiguredMaxSpeed());
+            
+            if (isMoving()) {
+                setSpeed(currentSpeed);
+            }
+            
+            status_ = EquipmentStatus::Active;
+            return true;
+            
+        } catch (const std::exception& e) {
+            // Log error and ensure safe state
+            logError("Forklift movement failed: " + std::string(e.what()));
+            status_ = EquipmentStatus::Error;
+            return false;
         }
     }
 } // namespace equipment_tracker
