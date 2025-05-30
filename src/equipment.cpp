@@ -1,6 +1,8 @@
 #include <sstream>
 #include <chrono>
 #include <cmath>
+#include <optional>
+#include <limits>
 #include "equipment_tracker/equipment.h"
 #include "equipment_tracker/utils/constants.h"
 
@@ -197,20 +199,26 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    std::optional<TimeStamp> Equipment::getCurrentDateTime() const
+    std::optional<TimeStamp> Equipment::getCurrentTimeStamp() const
     {
-        // No mutex needed for reading current time - it's a pure function call
-        
-        auto now = std::chrono::system_clock::now();
-        auto duration = now.time_since_epoch();
-        auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-        
-        auto count = milliseconds.count();
-        
-        // Only validate against TimeStamp's actual constraints if known
-        // Remove arbitrary date range restrictions unless required by business logic
-        
         try {
+            auto now = std::chrono::system_clock::now();
+            auto duration = now.time_since_epoch();
+            auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+            
+            auto count = milliseconds.count();
+            
+            // Validate count is within reasonable bounds before TimeStamp construction
+            if (count < 0) {
+                // Handle negative timestamps (pre-epoch)
+                return std::nullopt;
+            }
+            
+            // Check for potential overflow in TimeStamp constructor
+            if (count > std::numeric_limits<long long>::max() / 1000) {
+                return std::nullopt;
+            }
+            
             return TimeStamp{count};
         } catch (const std::invalid_argument& e) {
             // Log specific TimeStamp validation errors
@@ -223,7 +231,7 @@ namespace equipment_tracker
             // logger_.error("TimeStamp construction failed: out of range - {}", e.what());
             return std::nullopt;
         } catch (const std::exception& e) {
-            // Log unexpected errors
+            // Log unexpected errors from system clock or TimeStamp construction
             // TODO: Replace with proper logging framework
             // logger_.error("TimeStamp construction failed: unexpected error - {}", e.what());
             return std::nullopt;
