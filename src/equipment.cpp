@@ -197,143 +197,42 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    bool Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
-        // Validate equipment type first for safety
+    // Violates standards: 
+    // 1. Uses inconsistent naming (snake_case for function, camelCase for variables)
+    // 2. No safety checks for forklift operations
+    // 3. No input validation
+    // 4. No error handling
+    // 5. No boundary checks
+    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
+        // Direct database access without prepared statements
+        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
+                          ", y=" + std::to_string(y) + 
+                          ", z=" + std::to_string(z);
+        
+        // No validation of input coordinates
+        Position newPos;
+        newPos.setX(x);
+        newPos.setY(y);
+        newPos.setZ(z);
+        
+        // No safety checks for forklift movement
+        if (emergency_stop) {
+            status_ = EquipmentStatus::Inactive;
+            return;
+        }
+        
+        // No boundary checks for warehouse zones
+        recordPosition(newPos);
+        
+        // Inconsistent variable naming
+        int currentSpeed = 0;
+        if (isMoving()) {
+            currentSpeed = 100; // Hardcoded value without safety checks
+        }
+        
+        // No error handling for invalid operations
         if (type_ != EquipmentType::Forklift) {
-            throw std::invalid_argument("Operation only valid for forklift equipment");
-        }
-
-        // Validate database connection
-        if (!database_) {
-            throw std::runtime_error("Database connection not available");
-        }
-
-        // Input validation for coordinates
-        if (x < 0 || y < 0 || z < 0) {
-            throw std::invalid_argument("Coordinates must be non-negative");
-        }
-        
-        // Get configurable warehouse limits instead of hard-coded values
-        const int maxCoordinate = getWarehouseMaxCoordinate();
-        if (x > maxCoordinate || y > maxCoordinate || z > maxCoordinate) {
-            throw std::invalid_argument("Coordinates exceed maximum warehouse bounds");
-        }
-
-        // Check for coordinate value limits (individual values, not sum)
-        const int maxSafeCoordinate = std::numeric_limits<int>::max() / 4; // Safety margin
-        if (x > maxSafeCoordinate || y > maxSafeCoordinate || z > maxSafeCoordinate) {
-            throw std::invalid_argument("Individual coordinate values too large for safe calculations");
-        }
-
-        // Emergency stop safety check - handle immediately without other validations
-        if (emergencyStop) {
-            const EquipmentStatus previousStatus = status_;
-            status_ = EquipmentStatus::EmergencyStop;
-            try {
-                bool result = executeEmergencyStop();
-                if (!result) {
-                    status_ = EquipmentStatus::Error;
-                    logError("Emergency stop execution failed");
-                }
-                return result;
-            } catch (const std::exception& e) {
-                logError("Emergency stop failed: " + std::string(e.what()));
-                status_ = EquipmentStatus::Error;
-                return false;
-            }
-        }
-
-        // Store original status for rollback on failure
-        const EquipmentStatus originalStatus = status_;
-        
-        try {
-            // Warehouse zone boundary validation with error handling
-            if (!isValidWarehousePosition(x, y, z)) {
-                throw std::out_of_range("Position outside valid warehouse boundaries");
-            }
-
-            // Safety checks for forklift movement
-            if (!performSafetyChecks()) {
-                throw std::runtime_error("Safety checks failed - movement aborted");
-            }
-
-            // Validate movement constraints using Cartesian coordinates
-            const CartesianPosition currentPos = getCurrentCartesianPosition();
-            const CartesianPosition targetPos(x, y, z);
-            if (!isValidMovement(currentPos, targetPos)) {
-                throw std::invalid_argument("Invalid movement - exceeds safety limits");
-            }
-
-            // Use proper RAII for database transaction management
-            DatabaseTransaction transaction = database_->beginTransaction();
-            if (!transaction.isValid()) {
-                throw std::runtime_error("Failed to begin database transaction");
-            }
-            
-            try {
-                // Use prepared statement for database operation
-                auto stmt = database_->prepareStatement(
-                    "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=? WHERE equipment_id=?");
-                
-                if (!stmt) {
-                    throw std::runtime_error("Failed to prepare database statement");
-                }
-                
-                stmt->setInt(1, x);
-                stmt->setInt(2, y);
-                stmt->setInt(3, z);
-                stmt->setTimestamp(4, getCurrentTimestamp());
-                stmt->setString(5, equipmentId_);
-                
-                if (!stmt->execute()) {
-                    throw std::runtime_error("Failed to update position in database");
-                }
-
-                // Update position with validation
-                const CartesianPosition newPosition(x, y, z);
-                recordCartesianPosition(newPosition);
-                
-                // Calculate safe speed based on movement and load
-                const int maxSafeSpeed = calculateMaxSafeSpeed(newPosition);
-                const int configuredMax = getConfiguredMaxSpeed();
-                const int currentSpeed = std::min(maxSafeSpeed, configuredMax);
-                
-                if (isMoving()) {
-                    setSpeed(currentSpeed);
-                }
-                
-                // Commit transaction
-                transaction.commit();
-                
-                status_ = EquipmentStatus::Active;
-                return true;
-                
-            } catch (const std::exception& e) {
-                // Rollback transaction on any failure
-                transaction.rollback();
-                throw; // Re-throw to be caught by outer handler
-            }
-            
-        } catch (const std::invalid_argument& e) {
-            // Handle validation errors - restore original status
-            status_ = originalStatus;
-            logError("Invalid forklift movement parameters: " + std::string(e.what()));
-            throw; // Re-throw validation errors to caller
-        } catch (const std::out_of_range& e) {
-            // Handle boundary errors - restore original status
-            status_ = originalStatus;
-            logError("Forklift movement out of bounds: " + std::string(e.what()));
-            throw; // Re-throw boundary errors to caller
-        } catch (const std::runtime_error& e) {
-            // Handle system/safety errors - set error status
-            logError("Forklift movement system error: " + std::string(e.what()));
-            status_ = EquipmentStatus::Error;
-            return false;
-        } catch (const std::exception& e) {
-            // Handle any other unexpected errors
-            logError("Unexpected error in forklift movement: " + std::string(e.what()));
-            status_ = EquipmentStatus::Error;
-            return false;
+            return;
         }
     }
 } // namespace equipment_tracker
