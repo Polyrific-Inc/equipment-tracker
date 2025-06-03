@@ -82,13 +82,23 @@ namespace equipment_tracker
             throw std::invalid_argument("Invalid latitude or longitude values");
         }
         
-        // Check for identical positions with latitude-adjusted tolerance
-        const double latToleranceMeters = 1e-7; // ~1cm at equator
-        const double lonToleranceMeters = latToleranceMeters / std::cos(std::abs(latitude_) * M_PI / 180.0);
-
-        if (std::abs(latitude_ - other.latitude_) < latToleranceMeters &&
-            std::abs(longitude_ - other.longitude_) < lonToleranceMeters) {
+        // Use consistent degree-based tolerance for both lat/lon
+        const double tolerance = 1e-9; // ~0.1mm precision in degrees
+        
+        // Check for identical positions
+        if (std::abs(latitude_ - other.latitude_) < tolerance &&
+            std::abs(longitude_ - other.longitude_) < tolerance) {
             throw std::invalid_argument("Bearing is undefined for identical positions");
+        }
+        
+        // Handle polar regions specially (within 1 degree of poles)
+        if (std::abs(latitude_) > 89.0 || std::abs(other.latitude_) > 89.0) {
+            // At poles, bearing is either 0° (north) or 180° (south)
+            if (latitude_ > other.latitude_) {
+                return 180.0; // Heading south
+            } else {
+                return 0.0;   // Heading north
+            }
         }
         
         // Convert to radians for calculations
@@ -100,12 +110,9 @@ namespace equipment_tracker
         // Calculate bearing with proper longitude difference handling
         double deltaLon = lon2Rad - lon1Rad;
         
-        // Normalize longitude difference to [-π, π] efficiently
-        if (deltaLon > M_PI) {
-            deltaLon -= 2.0 * M_PI;
-        } else if (deltaLon < -M_PI) {
-            deltaLon += 2.0 * M_PI;
-        }
+        // Normalize longitude difference to [-π, π]
+        while (deltaLon > M_PI) deltaLon -= 2.0 * M_PI;
+        while (deltaLon < -M_PI) deltaLon += 2.0 * M_PI;
         
         // Calculate bearing components
         const double y = std::sin(deltaLon) * std::cos(lat2Rad);
@@ -121,10 +128,9 @@ namespace equipment_tracker
             bearingDeg += 360.0;
         }
         
-        // Ensure result is in valid range (defensive programming)
-        if (bearingDeg >= 360.0) {
-            bearingDeg = std::fmod(bearingDeg, 360.0);
-        }
+        // Ensure result is in valid range
+        bearingDeg = std::fmod(bearingDeg, 360.0);
+        if (bearingDeg < 0.0) bearingDeg += 360.0;
         
         return bearingDeg;
     }
