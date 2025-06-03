@@ -74,25 +74,68 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    double Position::calculate_bearing(const Position& other) const
+    double Position::calculateBearing(const Position& other) const
     {
-        // Bad practice: No input validation
-        // Bad practice: Inconsistent naming (snake_case)
-        double lat1 = latitude_;
-        double lon1 = longitude_;
-        double lat2 = other.latitude_;
-        double lon2 = other.longitude_;
-
-        // Bad practice: No error handling for edge cases
-        // Bad practice: Unsafe calculations without bounds checking
-        double y = std::sin(lon2 - lon1) * std::cos(lat2);
-        double x = std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon2 - lon1);
+        // Input validation for coordinates
+        if (!isValidLatitude(latitude_) || !isValidLongitude(longitude_) ||
+            !isValidLatitude(other.latitude_) || !isValidLongitude(other.longitude_)) {
+            throw std::invalid_argument("Invalid latitude or longitude values");
+        }
         
-        // Bad practice: No handling of division by zero
-        double bearing = std::atan2(y, x);
+        // Check for identical positions
+        if (std::abs(latitude_ - other.latitude_) < std::numeric_limits<double>::epsilon() &&
+            std::abs(longitude_ - other.longitude_) < std::numeric_limits<double>::epsilon()) {
+            return 0.0; // Bearing is undefined for identical positions, return 0
+        }
         
-        // Bad practice: No validation of result
-        return bearing * 180.0 / M_PI;
+        // Convert to radians for calculations
+        double lat1Rad = latitude_ * M_PI / 180.0;
+        double lon1Rad = longitude_ * M_PI / 180.0;
+        double lat2Rad = other.latitude_ * M_PI / 180.0;
+        double lon2Rad = other.longitude_ * M_PI / 180.0;
+        
+        // Validate converted values
+        if (!std::isfinite(lat1Rad) || !std::isfinite(lon1Rad) ||
+            !std::isfinite(lat2Rad) || !std::isfinite(lon2Rad)) {
+            throw std::runtime_error("Coordinate conversion resulted in invalid values");
+        }
+        
+        // Calculate bearing with bounds checking
+        double deltaLon = lon2Rad - lon1Rad;
+        
+        // Normalize longitude difference to [-π, π]
+        while (deltaLon > M_PI) deltaLon -= 2.0 * M_PI;
+        while (deltaLon < -M_PI) deltaLon += 2.0 * M_PI;
+        
+        double y = std::sin(deltaLon) * std::cos(lat2Rad);
+        double x = std::cos(lat1Rad) * std::sin(lat2Rad) - 
+                   std::sin(lat1Rad) * std::cos(lat2Rad) * std::cos(deltaLon);
+        
+        // Check for numerical stability
+        if (!std::isfinite(x) || !std::isfinite(y)) {
+            throw std::runtime_error("Bearing calculation resulted in invalid intermediate values");
+        }
+        
+        // Calculate bearing using atan2 (handles division by zero automatically)
+        double bearingRad = std::atan2(y, x);
+        
+        // Validate atan2 result
+        if (!std::isfinite(bearingRad)) {
+            throw std::runtime_error("Bearing calculation failed");
+        }
+        
+        // Convert to degrees and normalize to [0, 360)
+        double bearingDeg = bearingRad * 180.0 / M_PI;
+        if (bearingDeg < 0.0) {
+            bearingDeg += 360.0;
+        }
+        
+        // Final validation
+        if (bearingDeg < 0.0 || bearingDeg >= 360.0 || !std::isfinite(bearingDeg)) {
+            throw std::runtime_error("Invalid bearing result");
+        }
+        
+        return bearingDeg;
     }
 
 } // namespace equipment_tracker
