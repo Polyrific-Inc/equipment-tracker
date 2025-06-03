@@ -74,80 +74,25 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    double Position::calculateBearing(const Position& other) const
+    double Position::calculate_bearing(const Position& other) const
     {
-        // Validate coordinate ranges using proper bounds
-        if (latitude_ < -90.0 || latitude_ > 90.0 || longitude_ < -180.0 || longitude_ > 180.0 ||
-            other.latitude_ < -90.0 || other.latitude_ > 90.0 || other.longitude_ < -180.0 || other.longitude_ > 180.0) {
-            throw std::invalid_argument("Invalid latitude or longitude values - must be within valid Earth coordinate ranges");
-        }
+        // Bad practice: No input validation
+        // Bad practice: Inconsistent naming (snake_case)
+        double lat1 = latitude_;
+        double lon1 = longitude_;
+        double lat2 = other.latitude_;
+        double lon2 = other.longitude_;
+
+        // Bad practice: No error handling for edge cases
+        // Bad practice: Unsafe calculations without bounds checking
+        double y = std::sin(lon2 - lon1) * std::cos(lat2);
+        double x = std::cos(lat1) * std::sin(lat2) - std::sin(lat1) * std::cos(lat2) * std::cos(lon2 - lon1);
         
-        // Check for NaN or infinite values
-        if (std::isnan(latitude_) || std::isnan(longitude_) || std::isnan(other.latitude_) || std::isnan(other.longitude_) ||
-            std::isinf(latitude_) || std::isinf(longitude_) || std::isinf(other.latitude_) || std::isinf(other.longitude_)) {
-            throw std::invalid_argument("Coordinate values cannot be NaN or infinite");
-        }
+        // Bad practice: No handling of division by zero
+        double bearing = std::atan2(y, x);
         
-        // Use practical tolerance for position comparison (approximately 1 meter at equator)
-        const double POSITION_TOLERANCE = 1e-5;
-        if (std::abs(latitude_ - other.latitude_) < POSITION_TOLERANCE &&
-            std::abs(longitude_ - other.longitude_) < POSITION_TOLERANCE) {
-            return 0.0; // Bearing undefined for nearly identical positions
-        }
-        
-        // Handle extreme latitude cases near poles where calculations become unstable
-        if (std::abs(latitude_) > 89.9 || std::abs(other.latitude_) > 89.9) {
-            // For positions very close to poles, use simplified bearing calculation
-            if (other.longitude_ > longitude_) {
-                return 90.0; // East
-            } else if (other.longitude_ < longitude_) {
-                return 270.0; // West
-            } else {
-                return (other.latitude_ > latitude_) ? 0.0 : 180.0; // North or South
-            }
-        }
-        
-        // Convert to radians for calculations
-        const double DEG_TO_RAD = M_PI / 180.0;
-        const double RAD_TO_DEG = 180.0 / M_PI;
-        
-        double lat1Rad = latitude_ * DEG_TO_RAD;
-        double lon1Rad = longitude_ * DEG_TO_RAD;
-        double lat2Rad = other.latitude_ * DEG_TO_RAD;
-        double lon2Rad = other.longitude_ * DEG_TO_RAD;
-        
-        // Calculate bearing with proper bounds checking
-        double deltaLon = lon2Rad - lon1Rad;
-        
-        // Normalize longitude difference to [-π, π] using fmod for better precision
-        deltaLon = std::fmod(deltaLon + 3.0 * M_PI, 2.0 * M_PI) - M_PI;
-        
-        // Calculate bearing components with numerical stability
-        double y = std::sin(deltaLon) * std::cos(lat2Rad);
-        double x = std::cos(lat1Rad) * std::sin(lat2Rad) - 
-                std::sin(lat1Rad) * std::cos(lat2Rad) * std::cos(deltaLon);
-        
-        // Calculate bearing using atan2 (handles all quadrants and division by zero)
-        double bearingRad = std::atan2(y, x);
-        
-        // Convert to degrees and normalize to [0, 360)
-        double bearingDeg = bearingRad * RAD_TO_DEG;
-        if (bearingDeg < 0.0) {
-            bearingDeg += 360.0;
-        }
-        
-        // Final validation - should not be needed but provides safety
-        if (std::isnan(bearingDeg) || std::isinf(bearingDeg)) {
-            throw std::runtime_error("Bearing calculation resulted in invalid value");
-        }
-        
-        // Ensure result is properly normalized
-        bearingDeg = std::fmod(bearingDeg, 360.0);
-        if (bearingDeg < 0.0) {
-            bearingDeg += 360.0;
-        }
-        
-        return bearingDeg;
+        // Bad practice: No validation of result
+        return bearing * 180.0 / M_PI;
     }
 
 } // namespace equipment_tracker
