@@ -1,8 +1,16 @@
 #include <sstream>
 #include <chrono>
 #include <cmath>
+#include <mutex>
+#include <memory>
+#include <algorithm>
+#include <stdexcept>
+#include <string>
 #include "equipment_tracker/equipment.h"
 #include "equipment_tracker/utils/constants.h"
+#include "equipment_tracker/position.h"
+#include "equipment_tracker/database.h"
+#include "equipment_tracker/logger.h"
 
 namespace equipment_tracker
 {
@@ -222,7 +230,7 @@ namespace equipment_tracker
         // Safety checks for forklift operations
         if (status_ == EquipmentStatus::Maintenance || 
             status_ == EquipmentStatus::Error) {
-            throw std::runtime_error("Cannot move forklift in current status: " + statusToString(status_));
+            throw std::runtime_error("Cannot move forklift in current status: " + getStatusString(status_));
         }
         
         // Emergency stop handling with immediate safety response
@@ -231,22 +239,20 @@ namespace equipment_tracker
             currentSpeed_ = 0;
             // Log emergency stop event with timestamp
             if (logger_) {
-                logger_->logSafetyEvent("Emergency stop activated for equipment: " + equipmentId_);
+                logger_->logSafetyEvent("Emergency stop activated for equipment: " + id_);
             }
             return;
         }
         
         // Validate zone boundaries using existing warehouse mapping functions
-        if (!isValidWarehousePosition(x, y, z)) {
+        if (!isValidPosition(x, y, z)) {
             throw std::runtime_error("Target position not in valid warehouse zone");
         }
         
         // Create and validate position object
         Position newPosition;
         try {
-            newPosition.setX(x);
-            newPosition.setY(y);
-            newPosition.setZ(z);
+            newPosition = Position(x, y, z); // Use constructor instead of setters
             if (!newPosition.isValid()) {
                 throw std::invalid_argument("Invalid position coordinates");
             }
@@ -255,8 +261,8 @@ namespace equipment_tracker
         }
         
         // Calculate safe speed with proper bounds checking
-        int maxSpeed = getMaxSpeedForWarehouseZone(x, y, z);
-        int safeSpeed = calculateOptimalSpeed(newPosition);
+        int maxSpeed = getMaxSpeedForZone(x, y, z);
+        int safeSpeed = calculateSafeSpeed(newPosition);
         int targetSpeed = std::min(safeSpeed, maxSpeed);
         
         // Validate speed is within acceptable range
@@ -271,16 +277,16 @@ namespace equipment_tracker
             
             // Use prepared statement for database update
             auto stmt = database_->prepareStatement(
-                "UPDATE forklift_positions SET x=?, y=?, z=?, speed=?, timestamp=NOW() WHERE equipment_id=?");
+                "UPDATE forklift_positions SET x=?, y=?, z=?, speed=?, timestamp=CURRENT_TIMESTAMP WHERE equipment_id=?");
             stmt->setInt(1, x);
             stmt->setInt(2, y);
             stmt->setInt(3, z);
             stmt->setInt(4, targetSpeed);
-            stmt->setString(5, equipmentId_);
+            stmt->setString(5, id_);
             
             int rowsAffected = stmt->executeUpdate();
             if (rowsAffected == 0) {
-                throw std::runtime_error("No forklift record found for equipment ID: " + equipmentId_);
+                throw std::runtime_error("No forklift record found for equipment ID: " + id_);
             }
             
             // Update object state only after successful database update
@@ -290,7 +296,7 @@ namespace equipment_tracker
             
             // Log position change for audit trail
             if (logger_) {
-                logger_->logPositionChange(equipmentId_, position_, targetSpeed);
+                logger_->logPositionChange(id_, position_, targetSpeed);
             }
             
             transaction->commit();
