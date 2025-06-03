@@ -205,42 +205,78 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    // Violates standards: 
-    // 1. Uses inconsistent naming (snake_case for function, camelCase for variables)
-    // 2. No safety checks for forklift operations
-    // 3. No input validation
-    // 4. No error handling
-    // 5. No boundary checks
-    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
-        // Direct database access without prepared statements
-        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
-                          ", y=" + std::to_string(y) + 
-                          ", z=" + std::to_string(z);
-        
-        // No validation of input coordinates
-        Position newPos;
-        newPos.setX(x);
-        newPos.setY(y);
-        newPos.setZ(z);
-        
-        // No safety checks for forklift movement
-        if (emergency_stop) {
-            status_ = EquipmentStatus::Inactive;
-            return;
-        }
-        
-        // No boundary checks for warehouse zones
-        recordPosition(newPos);
-        
-        // Inconsistent variable naming
-        int currentSpeed = 0;
-        if (isMoving()) {
-            currentSpeed = 100; // Hardcoded value without safety checks
-        }
-        
-        // No error handling for invalid operations
+    void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
+        // Validate equipment type first
         if (type_ != EquipmentType::Forklift) {
+            throw std::invalid_argument("Equipment is not a forklift");
+        }
+        
+        // Input validation for coordinates
+        if (x < WAREHOUSE_MIN_X || x > WAREHOUSE_MAX_X ||
+            y < WAREHOUSE_MIN_Y || y > WAREHOUSE_MAX_Y ||
+            z < WAREHOUSE_MIN_Z || z > WAREHOUSE_MAX_Z) {
+            throw std::out_of_range("Coordinates outside warehouse boundaries");
+        }
+        
+        // Safety checks for forklift operations
+        if (!isOperational()) {
+            throw std::runtime_error("Forklift is not operational");
+        }
+        
+        // Handle emergency stop with proper safety protocols
+        if (emergencyStop) {
+            status_ = EquipmentStatus::EmergencyStop;
+            currentSpeed_ = 0;
+            Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             return;
+        }
+        
+        // Validate zone boundaries for warehouse mapping
+        if (!isValidWarehouseZone(x, y, z)) {
+            throw std::invalid_argument("Target position is in restricted zone");
+        }
+        
+        // Create position with validation
+        Position newPos;
+        try {
+            newPos.setX(x);
+            newPos.setY(y);
+            newPos.setZ(z);
+        } catch (const std::exception& e) {
+            throw std::invalid_argument("Invalid position coordinates: " + std::string(e.what()));
+        }
+        
+        // Calculate safe speed based on distance and load
+        int safeSpeed = calculateSafeSpeed(newPos);
+        if (safeSpeed > MAX_FORKLIFT_SPEED) {
+            safeSpeed = MAX_FORKLIFT_SPEED;
+        }
+        
+        // Use prepared statement for database operation
+        try {
+            auto stmt = Database::getInstance().prepareStatement(
+                "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=?, speed=? WHERE equipment_id=?");
+            stmt->setInt(1, x);
+            stmt->setInt(2, y);
+            stmt->setInt(3, z);
+            stmt->setTimestamp(4, std::chrono::system_clock::now());
+            stmt->setInt(5, safeSpeed);
+            stmt->setInt(6, id_);
+            stmt->execute();
+        } catch (const std::exception& e) {
+            Logger::logError("Database update failed for forklift movement: " + std::string(e.what()));
+            throw std::runtime_error("Failed to update forklift position");
+        }
+        
+        // Record position with error handling
+        try {
+            recordPosition(newPos);
+            currentSpeed_ = safeSpeed;
+            Logger::logInfo("Forklift " + std::to_string(id_) + " moved to position (" + 
+                           std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
+        } catch (const std::exception& e) {
+            Logger::logError("Failed to record forklift position: " + std::string(e.what()));
+            throw;
         }
     }
 } // namespace equipment_tracker
