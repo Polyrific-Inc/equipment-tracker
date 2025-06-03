@@ -231,22 +231,24 @@ namespace equipment_tracker
         
         // Handle emergency stop with proper transaction management
         if (emergencyStop) {
+            std::unique_ptr<DatabaseTransaction> transaction;
             try {
                 auto& db = Database::getInstance();
                 if (!db.isConnected()) {
                     throw std::runtime_error("Database connection not available for emergency stop");
                 }
                 
-                auto transaction = db.beginTransaction();
+                transaction = db.beginTransaction();
                 auto stmt = db.prepareStatement(
                     "UPDATE equipment SET status=?, speed=?, last_update=? WHERE id=?");
                 if (!stmt) {
                     throw std::runtime_error("Failed to prepare emergency stop statement");
                 }
                 
+                auto now = std::chrono::system_clock::now();
                 stmt->setInt(1, static_cast<int>(EquipmentStatus::EmergencyStop));
                 stmt->setInt(2, 0);
-                stmt->setTimestamp(3, std::chrono::system_clock::now());
+                stmt->setTimestamp(3, now);
                 stmt->setInt(4, id_);
                 
                 if (!stmt->execute()) {
@@ -258,9 +260,17 @@ namespace equipment_tracker
                 // Update internal state only after successful database commit
                 status_ = EquipmentStatus::EmergencyStop;
                 currentSpeed_ = 0;
+                lastUpdateTime_ = now;
                 
                 Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             } catch (const std::exception& e) {
+                if (transaction) {
+                    try {
+                        transaction->rollback();
+                    } catch (const std::exception& rollbackError) {
+                        Logger::logError("Transaction rollback failed: " + std::string(rollbackError.what()));
+                    }
+                }
                 Logger::logError("Emergency stop failed: " + std::string(e.what()));
                 throw std::runtime_error("Failed to process emergency stop: " + std::string(e.what()));
             }
@@ -277,13 +287,14 @@ namespace equipment_tracker
         safeSpeed = std::clamp(safeSpeed, 0, MAX_FORKLIFT_SPEED);
         
         // Database transaction with proper rollback handling
+        std::unique_ptr<DatabaseTransaction> transaction;
         try {
             auto& db = Database::getInstance();
             if (!db.isConnected()) {
                 throw std::runtime_error("Database connection not available");
             }
             
-            auto transaction = db.beginTransaction();
+            transaction = db.beginTransaction();
             auto now = std::chrono::system_clock::now();
             
             // Update position table
@@ -336,6 +347,13 @@ namespace equipment_tracker
                            ") at speed " + std::to_string(safeSpeed));
             
         } catch (const std::exception& e) {
+            if (transaction) {
+                try {
+                    transaction->rollback();
+                } catch (const std::exception& rollbackError) {
+                    Logger::logError("Transaction rollback failed: " + std::string(rollbackError.what()));
+                }
+            }
             Logger::logError("Forklift movement failed: " + std::string(e.what()));
             throw std::runtime_error("Failed to move forklift: " + std::string(e.what()));
         }
