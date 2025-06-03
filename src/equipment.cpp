@@ -197,42 +197,66 @@ namespace equipment_tracker
         return ss.str();
     }
 
-    // Violates standards: 
-    // 1. Uses inconsistent naming (snake_case for function, camelCase for variables)
-    // 2. No safety checks for forklift operations
-    // 3. No input validation
-    // 4. No error handling
-    // 5. No boundary checks
-    void Equipment::move_forklift(int x, int y, int z, bool emergency_stop) {
-        // Direct database access without prepared statements
-        std::string query = "UPDATE forklift_positions SET x=" + std::to_string(x) + 
-                          ", y=" + std::to_string(y) + 
-                          ", z=" + std::to_string(z);
-        
-        // No validation of input coordinates
-        Position newPos;
-        newPos.setX(x);
-        newPos.setY(y);
-        newPos.setZ(z);
-        
-        // No safety checks for forklift movement
-        if (emergency_stop) {
-            status_ = EquipmentStatus::Inactive;
-            return;
-        }
-        
-        // No boundary checks for warehouse zones
-        recordPosition(newPos);
-        
-        // Inconsistent variable naming
-        int currentSpeed = 0;
-        if (isMoving()) {
-            currentSpeed = 100; // Hardcoded value without safety checks
-        }
-        
-        // No error handling for invalid operations
+    void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
+        // Validate equipment type first for safety
         if (type_ != EquipmentType::Forklift) {
+            throw std::invalid_argument("Operation only valid for forklift equipment");
+        }
+        
+        // Input validation for coordinates
+        if (x < WAREHOUSE_MIN_X || x > WAREHOUSE_MAX_X ||
+            y < WAREHOUSE_MIN_Y || y > WAREHOUSE_MAX_Y ||
+            z < WAREHOUSE_MIN_Z || z > WAREHOUSE_MAX_Z) {
+            throw std::out_of_range("Coordinates outside warehouse boundaries");
+        }
+        
+        // Safety checks for forklift operations
+        if (status_ == EquipmentStatus::Maintenance || 
+            status_ == EquipmentStatus::Error) {
+            throw std::runtime_error("Cannot move forklift in current status");
+        }
+        
+        // Emergency stop handling with immediate safety response
+        if (emergencyStop) {
+            status_ = EquipmentStatus::EmergencyStop;
+            currentSpeed_ = 0;
+            // Log emergency stop event
+            logSafetyEvent("Emergency stop activated");
             return;
+        }
+        
+        // Validate zone boundaries for warehouse mapping
+        if (!isValidWarehouseZone(x, y, z)) {
+            throw std::runtime_error("Target position not in valid warehouse zone");
+        }
+        
+        // Create position with validation
+        Position newPosition;
+        newPosition.setX(x);
+        newPosition.setY(y);
+        newPosition.setZ(z);
+        
+        // Safety speed limits based on zone type
+        int maxSpeed = getMaxSpeedForZone(x, y, z);
+        int currentSpeed = std::min(calculateSafeSpeed(), maxSpeed);
+        
+        try {
+            // Use prepared statement for database update
+            auto stmt = database_->prepareStatement(
+                "UPDATE forklift_positions SET x=?, y=?, z=?, speed=?, timestamp=NOW() WHERE equipment_id=?");
+            stmt->setInt(1, x);
+            stmt->setInt(2, y);
+            stmt->setInt(3, z);
+            stmt->setInt(4, currentSpeed);
+            stmt->setString(5, equipmentId_);
+            stmt->executeUpdate();
+            
+            // Record position after successful database update
+            recordPosition(newPosition);
+            currentSpeed_ = currentSpeed;
+            
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Failed to update forklift position: " + std::string(e.what()));
         }
     }
 } // namespace equipment_tracker
