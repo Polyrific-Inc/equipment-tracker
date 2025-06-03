@@ -213,17 +213,14 @@ namespace equipment_tracker
             throw std::invalid_argument("Equipment is not a forklift");
         }
         
-        // Input validation with proper bounds checking
-        if (x < 0 || y < 0 || z < 0 || 
-            x > std::numeric_limits<int>::max() - 1000 ||
-            y > std::numeric_limits<int>::max() - 1000 ||
-            z > std::numeric_limits<int>::max() - 100) {
-            throw std::invalid_argument("Invalid coordinates");
+        // Comprehensive input validation
+        if (x < 0 || y < 0 || z < 0) {
+            throw std::invalid_argument("Coordinates cannot be negative");
         }
         
-        if (x < WAREHOUSE_MIN_X || x > WAREHOUSE_MAX_X ||
-            y < WAREHOUSE_MIN_Y || y > WAREHOUSE_MAX_Y ||
-            z < WAREHOUSE_MIN_Z || z > WAREHOUSE_MAX_Z) {
+        // Check for potential overflow with warehouse bounds
+        if (x > WAREHOUSE_MAX_X || y > WAREHOUSE_MAX_Y || z > WAREHOUSE_MAX_Z ||
+            x < WAREHOUSE_MIN_X || y < WAREHOUSE_MIN_Y || z < WAREHOUSE_MIN_Z) {
             throw std::out_of_range("Coordinates outside warehouse boundaries");
         }
         
@@ -232,29 +229,39 @@ namespace equipment_tracker
             throw std::runtime_error("Forklift is not operational");
         }
         
-        // Handle emergency stop with consistent error handling
+        // Handle emergency stop with proper transaction management
         if (emergencyStop) {
-            status_ = EquipmentStatus::EmergencyStop;
-            currentSpeed_ = 0;
-            
             try {
                 auto& db = Database::getInstance();
-                if (db.isConnected()) {
-                    auto stmt = db.prepareStatement(
-                        "UPDATE equipment SET status=?, speed=?, last_update=? WHERE id=?");
-                    if (stmt) {
-                        stmt->setInt(1, static_cast<int>(EquipmentStatus::EmergencyStop));
-                        stmt->setInt(2, 0);
-                        stmt->setTimestamp(3, std::chrono::system_clock::now());
-                        stmt->setInt(4, id_);
-                        if (!stmt->execute()) {
-                            throw std::runtime_error("Failed to update emergency stop in database");
-                        }
-                    }
+                if (!db.isConnected()) {
+                    throw std::runtime_error("Database connection not available for emergency stop");
                 }
+                
+                auto transaction = db.beginTransaction();
+                auto stmt = db.prepareStatement(
+                    "UPDATE equipment SET status=?, speed=?, last_update=? WHERE id=?");
+                if (!stmt) {
+                    throw std::runtime_error("Failed to prepare emergency stop statement");
+                }
+                
+                stmt->setInt(1, static_cast<int>(EquipmentStatus::EmergencyStop));
+                stmt->setInt(2, 0);
+                stmt->setTimestamp(3, std::chrono::system_clock::now());
+                stmt->setInt(4, id_);
+                
+                if (!stmt->execute()) {
+                    throw std::runtime_error("Failed to update emergency stop in database");
+                }
+                
+                transaction->commit();
+                
+                // Update internal state only after successful database commit
+                status_ = EquipmentStatus::EmergencyStop;
+                currentSpeed_ = 0;
+                
                 Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             } catch (const std::exception& e) {
-                Logger::logError("Emergency stop database update failed: " + std::string(e.what()));
+                Logger::logError("Emergency stop failed: " + std::string(e.what()));
                 throw std::runtime_error("Failed to process emergency stop: " + std::string(e.what()));
             }
             return;
@@ -267,10 +274,9 @@ namespace equipment_tracker
         
         // Calculate safe speed with bounds checking
         int safeSpeed = calculateSafeSpeed(x, y, z);
-        safeSpeed = std::min(safeSpeed, MAX_FORKLIFT_SPEED);
-        safeSpeed = std::max(safeSpeed, 0);
+        safeSpeed = std::clamp(safeSpeed, 0, MAX_FORKLIFT_SPEED);
         
-        // Database transaction with proper error handling
+        // Database transaction with proper rollback handling
         try {
             auto& db = Database::getInstance();
             if (!db.isConnected()) {
