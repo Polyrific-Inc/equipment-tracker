@@ -206,23 +206,18 @@ namespace equipment_tracker
     }
 
     void Equipment::moveForklift(int x, int y, int z, bool emergencyStop) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::mutex> lock(equipmentMutex_);
         
         // Validate equipment type first
         if (type_ != EquipmentType::Forklift) {
             throw std::invalid_argument("Equipment is not a forklift");
         }
         
-        // Define warehouse boundaries (should be moved to constants.h)
-        constexpr int WAREHOUSE_MIN_X = 0;
-        constexpr int WAREHOUSE_MAX_X = 1000;
-        constexpr int WAREHOUSE_MIN_Y = 0;
-        constexpr int WAREHOUSE_MAX_Y = 1000;
-        constexpr int WAREHOUSE_MIN_Z = 0;
-        constexpr int WAREHOUSE_MAX_Z = 100;
-        constexpr int MAX_FORKLIFT_SPEED = 50;
+        // Input validation for coordinates with overflow protection
+        if (x < 0 || y < 0 || z < 0) {
+            throw std::invalid_argument("Coordinates cannot be negative");
+        }
         
-        // Input validation for coordinates
         if (x < WAREHOUSE_MIN_X || x > WAREHOUSE_MAX_X ||
             y < WAREHOUSE_MIN_Y || y > WAREHOUSE_MAX_Y ||
             z < WAREHOUSE_MIN_Z || z > WAREHOUSE_MAX_Z) {
@@ -234,72 +229,107 @@ namespace equipment_tracker
             throw std::runtime_error("Forklift is not operational");
         }
         
-        // Handle emergency stop with proper safety protocols
+        // Handle emergency stop with database persistence
         if (emergencyStop) {
             status_ = EquipmentStatus::EmergencyStop;
             currentSpeed_ = 0;
+            
+            try {
+                auto& db = Database::getInstance();
+                if (db.isConnected()) {
+                    auto stmt = db.prepareStatement(
+                        "UPDATE equipment SET status=?, speed=?, last_update=? WHERE id=?");
+                    if (stmt) {
+                        stmt->setInt(1, static_cast<int>(EquipmentStatus::EmergencyStop));
+                        stmt->setInt(2, 0);
+                        stmt->setTimestamp(3, std::chrono::system_clock::now());
+                        stmt->setInt(4, id_);
+                        stmt->execute();
+                    }
+                }
+            } catch (const std::exception& e) {
+                Logger::logError("Failed to persist emergency stop state: " + std::string(e.what()));
+            }
+            
             Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             return;
         }
         
-        // Basic zone validation (implement proper zone checking logic)
-        bool isValidZone = true; // Placeholder - implement actual zone validation
-        if (!isValidZone) {
+        // Zone validation with proper warehouse zone checking
+        if (!isValidWarehouseZone(x, y, z)) {
             throw std::invalid_argument("Target position is in restricted zone");
         }
         
-        // Create position with validation
-        Position newPos;
-        try {
-            newPos.setX(x);
-            newPos.setY(y);
-            newPos.setZ(z);
-        } catch (const std::exception& e) {
-            throw std::invalid_argument("Invalid position coordinates: " + std::string(e.what()));
+        // Calculate safe speed based on current conditions and distance
+        int safeSpeed = calculateSafeSpeed(x, y, z);
+        if (safeSpeed > MAX_FORKLIFT_SPEED) {
+            safeSpeed = MAX_FORKLIFT_SPEED;
         }
         
-        // Calculate safe speed (basic implementation)
-        int safeSpeed = std::min(MAX_FORKLIFT_SPEED, 30); // Default safe speed
+        // Create warehouse position (separate from geographic Position)
+        WarehousePosition newPos(x, y, z);
         
-        // Use prepared statement for database operation with connection validation
-        try {
-            auto& db = Database::getInstance();
-            if (!db.isConnected()) {
-                throw std::runtime_error("Database connection not available");
-            }
-            
-            auto stmt = db.prepareStatement(
-                "UPDATE forklift_positions SET x=?, y=?, z=?, timestamp=?, speed=? WHERE equipment_id=?");
-            if (!stmt) {
-                throw std::runtime_error("Failed to prepare database statement");
-            }
-            
-            stmt->setInt(1, x);
-            stmt->setInt(2, y);
-            stmt->setInt(3, z);
-            stmt->setTimestamp(4, std::chrono::system_clock::now());
-            stmt->setInt(5, safeSpeed);
-            stmt->setInt(6, id_);
-            
-            if (!stmt->execute()) {
-                throw std::runtime_error("Database statement execution failed");
-            }
-        } catch (const std::exception& e) {
-            Logger::logError("Database update failed for forklift movement: " + std::string(e.what()));
-            throw std::runtime_error("Failed to update forklift position: " + std::string(e.what()));
+        // Database transaction with proper rollback
+        auto& db = Database::getInstance();
+        if (!db.isConnected()) {
+            throw std::runtime_error("Database connection not available");
         }
         
-        // Update internal state
+        auto transaction = db.beginTransaction();
         try {
-            recordPosition(newPos);
+            // Update position table
+            auto posStmt = db.prepareStatement(
+                "INSERT INTO forklift_positions (equipment_id, x, y, z, timestamp, speed) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON DUPLICATE KEY UPDATE x=VALUES(x), y=VALUES(y), z=VALUES(z), timestamp=VALUES(timestamp), speed=VALUES(speed)");
+            if (!posStmt) {
+                throw std::runtime_error("Failed to prepare position statement");
+            }
+            
+            auto now = std::chrono::system_clock::now();
+            posStmt->setInt(1, id_);
+            posStmt->setInt(2, x);
+            posStmt->setInt(3, y);
+            posStmt->setInt(4, z);
+            posStmt->setTimestamp(5, now);
+            posStmt->setInt(6, safeSpeed);
+            
+            if (!posStmt->execute()) {
+                throw std::runtime_error("Position update failed");
+            }
+            
+            // Update equipment status
+            auto equipStmt = db.prepareStatement(
+                "UPDATE equipment SET last_x=?, last_y=?, last_z=?, speed=?, last_update=? WHERE id=?");
+            if (!equipStmt) {
+                throw std::runtime_error("Failed to prepare equipment statement");
+            }
+            
+            equipStmt->setInt(1, x);
+            equipStmt->setInt(2, y);
+            equipStmt->setInt(3, z);
+            equipStmt->setInt(4, safeSpeed);
+            equipStmt->setTimestamp(5, now);
+            equipStmt->setInt(6, id_);
+            
+            if (!equipStmt->execute()) {
+                throw std::runtime_error("Equipment update failed");
+            }
+            
+            transaction->commit();
+            
+            // Update internal state only after successful database commit
+            recordWarehousePosition(newPos);
             currentSpeed_ = safeSpeed;
-            lastUpdateTime_ = std::chrono::system_clock::now();
+            lastUpdateTime_ = now;
             
             Logger::logInfo("Forklift " + std::to_string(id_) + " moved to position (" + 
-                           std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
+                           std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + 
+                           ") at speed " + std::to_string(safeSpeed));
+            
         } catch (const std::exception& e) {
-            Logger::logError("Failed to update forklift state: " + std::string(e.what()));
-            throw;
+            transaction->rollback();
+            Logger::logError("Forklift movement failed: " + std::string(e.what()));
+            throw std::runtime_error("Failed to move forklift: " + std::string(e.what()));
         }
     }
 } // namespace equipment_tracker
