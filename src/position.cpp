@@ -82,11 +82,13 @@ namespace equipment_tracker
             throw std::invalid_argument("Invalid latitude or longitude values");
         }
         
-        // Check for identical positions with practical tolerance
-        constexpr double POSITION_TOLERANCE = 1e-9; // ~0.1mm precision
-        if (std::abs(latitude_ - other.latitude_) < POSITION_TOLERANCE &&
-            std::abs(longitude_ - other.longitude_) < POSITION_TOLERANCE) {
-            return 0.0; // Bearing is undefined for identical positions
+        // Check for identical positions with latitude-adjusted tolerance
+        const double latToleranceMeters = 1e-7; // ~1cm at equator
+        const double lonToleranceMeters = latToleranceMeters / std::cos(std::abs(latitude_) * M_PI / 180.0);
+
+        if (std::abs(latitude_ - other.latitude_) < latToleranceMeters &&
+            std::abs(longitude_ - other.longitude_) < lonToleranceMeters) {
+            throw std::invalid_argument("Bearing is undefined for identical positions");
         }
         
         // Convert to radians for calculations
