@@ -213,9 +213,12 @@ namespace equipment_tracker
             throw std::invalid_argument("Equipment is not a forklift");
         }
         
-        // Input validation for coordinates with overflow protection
-        if (x < 0 || y < 0 || z < 0) {
-            throw std::invalid_argument("Coordinates cannot be negative");
+        // Input validation with proper bounds checking
+        if (x < 0 || y < 0 || z < 0 || 
+            x > std::numeric_limits<int>::max() - 1000 ||
+            y > std::numeric_limits<int>::max() - 1000 ||
+            z > std::numeric_limits<int>::max() - 100) {
+            throw std::invalid_argument("Invalid coordinates");
         }
         
         if (x < WAREHOUSE_MIN_X || x > WAREHOUSE_MAX_X ||
@@ -229,7 +232,7 @@ namespace equipment_tracker
             throw std::runtime_error("Forklift is not operational");
         }
         
-        // Handle emergency stop with database persistence
+        // Handle emergency stop with consistent error handling
         if (emergencyStop) {
             status_ = EquipmentStatus::EmergencyStop;
             currentSpeed_ = 0;
@@ -244,14 +247,16 @@ namespace equipment_tracker
                         stmt->setInt(2, 0);
                         stmt->setTimestamp(3, std::chrono::system_clock::now());
                         stmt->setInt(4, id_);
-                        stmt->execute();
+                        if (!stmt->execute()) {
+                            throw std::runtime_error("Failed to update emergency stop in database");
+                        }
                     }
                 }
+                Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             } catch (const std::exception& e) {
-                Logger::logError("Failed to persist emergency stop state: " + std::string(e.what()));
+                Logger::logError("Emergency stop database update failed: " + std::string(e.what()));
+                throw std::runtime_error("Failed to process emergency stop: " + std::string(e.what()));
             }
-            
-            Logger::logCritical("Emergency stop activated for forklift " + std::to_string(id_));
             return;
         }
         
@@ -260,23 +265,21 @@ namespace equipment_tracker
             throw std::invalid_argument("Target position is in restricted zone");
         }
         
-        // Calculate safe speed based on current conditions and distance
+        // Calculate safe speed with bounds checking
         int safeSpeed = calculateSafeSpeed(x, y, z);
-        if (safeSpeed > MAX_FORKLIFT_SPEED) {
-            safeSpeed = MAX_FORKLIFT_SPEED;
-        }
+        safeSpeed = std::min(safeSpeed, MAX_FORKLIFT_SPEED);
+        safeSpeed = std::max(safeSpeed, 0);
         
-        // Create warehouse position (separate from geographic Position)
-        WarehousePosition newPos(x, y, z);
-        
-        // Database transaction with proper rollback
-        auto& db = Database::getInstance();
-        if (!db.isConnected()) {
-            throw std::runtime_error("Database connection not available");
-        }
-        
-        auto transaction = db.beginTransaction();
+        // Database transaction with proper error handling
         try {
+            auto& db = Database::getInstance();
+            if (!db.isConnected()) {
+                throw std::runtime_error("Database connection not available");
+            }
+            
+            auto transaction = db.beginTransaction();
+            auto now = std::chrono::system_clock::now();
+            
             // Update position table
             auto posStmt = db.prepareStatement(
                 "INSERT INTO forklift_positions (equipment_id, x, y, z, timestamp, speed) VALUES (?, ?, ?, ?, ?, ?) "
@@ -285,7 +288,6 @@ namespace equipment_tracker
                 throw std::runtime_error("Failed to prepare position statement");
             }
             
-            auto now = std::chrono::system_clock::now();
             posStmt->setInt(1, id_);
             posStmt->setInt(2, x);
             posStmt->setInt(3, y);
@@ -318,6 +320,7 @@ namespace equipment_tracker
             transaction->commit();
             
             // Update internal state only after successful database commit
+            WarehousePosition newPos(x, y, z);
             recordWarehousePosition(newPos);
             currentSpeed_ = safeSpeed;
             lastUpdateTime_ = now;
@@ -327,7 +330,6 @@ namespace equipment_tracker
                            ") at speed " + std::to_string(safeSpeed));
             
         } catch (const std::exception& e) {
-            transaction->rollback();
             Logger::logError("Forklift movement failed: " + std::string(e.what()));
             throw std::runtime_error("Failed to move forklift: " + std::string(e.what()));
         }
