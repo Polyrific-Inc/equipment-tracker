@@ -1,6 +1,8 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
+#include <limits>
+#include <stdexcept>
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/constants.h"
 
@@ -70,6 +72,67 @@ namespace equipment_tracker
            << "m, time=" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << ")";
 
         return ss.str();
+    }
+
+    double Position::calculateBearing(const Position& other) const
+    {
+        // Basic coordinate validation
+        if (std::abs(latitude_) > 90.0 || std::abs(longitude_) > 180.0 ||
+            std::abs(other.latitude_) > 90.0 || std::abs(other.longitude_) > 180.0) {
+            throw std::invalid_argument("Invalid latitude or longitude values");
+        }
+        
+        // Use consistent degree-based tolerance for both lat/lon
+        const double tolerance = 1e-9; // ~0.1mm precision in degrees
+        
+        // Check for identical positions
+        if (std::abs(latitude_ - other.latitude_) < tolerance &&
+            std::abs(longitude_ - other.longitude_) < tolerance) {
+            throw std::invalid_argument("Bearing is undefined for identical positions");
+        }
+        
+        // Handle polar regions specially (within 1 degree of poles)
+        if (std::abs(latitude_) > 89.0 || std::abs(other.latitude_) > 89.0) {
+            // At poles, bearing is either 0° (north) or 180° (south)
+            if (latitude_ > other.latitude_) {
+                return 180.0; // Heading south
+            } else {
+                return 0.0;   // Heading north
+            }
+        }
+        
+        // Convert to radians for calculations
+        const double lat1Rad = latitude_ * M_PI / 180.0;
+        const double lon1Rad = longitude_ * M_PI / 180.0;
+        const double lat2Rad = other.latitude_ * M_PI / 180.0;
+        const double lon2Rad = other.longitude_ * M_PI / 180.0;
+        
+        // Calculate bearing with proper longitude difference handling
+        double deltaLon = lon2Rad - lon1Rad;
+        
+        // Normalize longitude difference to [-π, π]
+        while (deltaLon > M_PI) deltaLon -= 2.0 * M_PI;
+        while (deltaLon < -M_PI) deltaLon += 2.0 * M_PI;
+        
+        // Calculate bearing components
+        const double y = std::sin(deltaLon) * std::cos(lat2Rad);
+        const double x = std::cos(lat1Rad) * std::sin(lat2Rad) - 
+                         std::sin(lat1Rad) * std::cos(lat2Rad) * std::cos(deltaLon);
+        
+        // Calculate bearing using atan2 (handles all quadrants and division by zero)
+        double bearingRad = std::atan2(y, x);
+        
+        // Convert to degrees and normalize to [0, 360)
+        double bearingDeg = bearingRad * 180.0 / M_PI;
+        if (bearingDeg < 0.0) {
+            bearingDeg += 360.0;
+        }
+        
+        // Ensure result is in valid range
+        bearingDeg = std::fmod(bearingDeg, 360.0);
+        if (bearingDeg < 0.0) bearingDeg += 360.0;
+        
+        return bearingDeg;
     }
 
 } // namespace equipment_tracker
