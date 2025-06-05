@@ -436,7 +436,7 @@ namespace equipment_tracker
                     time_t timestamp = std::stoull(timestamp_str);
 
                     // Check if within time range
-                    if (timestamp >= start_time && timestamp <= end_time)
+                    if (timestamp >= start_time && timestamp < end_time)
                     {
                         // Load position from file
                         std::ifstream file(path);
