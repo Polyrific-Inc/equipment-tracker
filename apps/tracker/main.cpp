@@ -1,4 +1,3 @@
-```
 #include <iostream>
 #include <memory>
 #include <chrono>
@@ -77,21 +76,27 @@ int main(int argc, char *argv[])
             printUsage(argv[0]);
             return 0;
         }
-        else if (arg == "--pos1" && i + 1 < argc)
-        {
-            if (!parsePosition(argv[i + 1], pos1_lat, pos1_lon, pos1_alt))
-            {
-                std::cerr << "Error: Invalid position format for --pos1" << std::endl;
+        else if (arg == "--pos1") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --pos1 requires a position argument" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            if (!parsePosition(argv[i + 1], pos1_lat, pos1_lon, pos1_alt)) {
+                std::cerr << "Error: Invalid position format for --pos1. Expected format: lat,lon,alt" << std::endl;
                 printUsage(argv[0]);
                 return 1;
             }
             i++;
         }
-        else if (arg == "--pos2" && i + 1 < argc)
-        {
-            if (!parsePosition(argv[i + 1], pos2_lat, pos2_lon, pos2_alt))
-            {
-                std::cerr << "Error: Invalid position format for --pos2" << std::endl;
+        else if (arg == "--pos2") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --pos2 requires a position argument" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            if (!parsePosition(argv[i + 1], pos2_lat, pos2_lon, pos2_alt)) {
+                std::cerr << "Error: Invalid position format for --pos2. Expected format: lat,lon,alt" << std::endl;
                 printUsage(argv[0]);
                 return 1;
             }
@@ -196,4 +201,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-```
