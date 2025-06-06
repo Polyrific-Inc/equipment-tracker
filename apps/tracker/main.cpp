@@ -2,35 +2,137 @@
 #include <memory>
 #include <chrono>
 #include <thread>
+#include <string>
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/equipment.h"
 #include "equipment_tracker/utils/time_utils.h"
 
 using namespace equipment_tracker;
 
-int main()
+void printSeparator()
 {
+    std::cout << "---------------------------------------------------" << std::endl;
+}
+
+void printUsage(const char *programName)
+{
+    std::cout << "Usage: " << programName << " [options]" << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  --pos1 lat,lon,alt     Set position 1 (default: 37.7749,-122.4194,10.0)" << std::endl;
+    std::cout << "  --pos2 lat,lon,alt     Set position 2 (default: 34.0522,-118.2437,50.0)" << std::endl;
+    std::cout << "  --help                 Show this help message" << std::endl;
+}
+
+bool parsePosition(const std::string &str, double &lat, double &lon, double &alt)
+{
+    size_t first_comma = str.find(',');
+    size_t second_comma = str.find(',', first_comma + 1);
+
+    if (first_comma == std::string::npos || second_comma == std::string::npos)
+    {
+        return false;
+    }
+    
+    // Add bounds checking before substring operations
+    if (first_comma == 0 || second_comma == 0 || first_comma >= str.length() || second_comma >= str.length()) {
+        return false;
+    }
+
+    try
+    {
+        lat = std::stod(str.substr(0, first_comma));
+        lon = std::stod(str.substr(first_comma + 1, second_comma - first_comma - 1));
+        alt = std::stod(str.substr(second_comma + 1));
+        
+        // Validate latitude (-90 to 90)
+        if (lat < -90.0 || lat > 90.0)
+            return false;
+            
+        // Validate longitude (-180 to 180)
+        if (lon < -180.0 || lon > 180.0)
+            return false;
+            
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        return false;
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    // Default positions
+    double pos1_lat = 37.7749, pos1_lon = -122.4194, pos1_alt = 10.0;
+    double pos2_lat = 34.0522, pos2_lon = -118.2437, pos2_alt = 50.0;
+
+    // Parse command-line arguments
+    for (int i = 1; i < argc; i++)
+    {
+        std::string arg = argv[i];
+
+        if (arg == "--help")
+        {
+            printUsage(argv[0]);
+            return 0;
+        }
+        else if (arg == "--pos1") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --pos1 requires a position argument" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            if (!parsePosition(argv[i + 1], pos1_lat, pos1_lon, pos1_alt)) {
+                std::cerr << "Error: Invalid position format for --pos1. Expected format: lat,lon,alt" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            i++;
+        }
+        else if (arg == "--pos2") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --pos2 requires a position argument" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            if (!parsePosition(argv[i + 1], pos2_lat, pos2_lon, pos2_alt)) {
+                std::cerr << "Error: Invalid position format for --pos2. Expected format: lat,lon,alt" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+            i++;
+        }
+        else
+        {
+            std::cerr << "Error: Unknown option: " << arg << std::endl;
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
+
     std::cout << "Equipment Tracker - Test Application" << std::endl;
     std::cout << "===================================" << std::endl;
 
     // Create a position using regular constructor
-    Position position1(37.7749, -122.4194, 10.0);
+    Position position1(pos1_lat, pos1_lon, pos1_alt);
 
     // Create a position using builder pattern
     Position position2 = Position::builder()
-                             .withLatitude(34.0522)
-                             .withLongitude(-118.2437)
-                             .withAltitude(50.0)
+                             .withLatitude(pos2_lat)
+                             .withLongitude(pos2_lon)
+                             .withAltitude(pos2_alt)
                              .withAccuracy(1.5)
                              .build();
 
     // Print positions
+    printSeparator();
     std::cout << "Position 1 (San Francisco): " << position1.toString() << std::endl;
     std::cout << "Position 2 (Los Angeles): " << position2.toString() << std::endl;
 
     // Calculate distance
     double distance = position1.distanceTo(position2);
     std::cout << "Distance: " << distance / 1000.0 << " km" << std::endl;
+    printSeparator();
 
     // Create equipment
     Equipment forklift("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
@@ -51,8 +153,13 @@ int main()
     {
         std::cout << "No position recorded yet." << std::endl;
     }
+    printSeparator();
 
-    // Record multiple positions to test history
+    // Test movement detection
+    std::cout << "Testing movement detection:" << std::endl;
+    std::cout << "Initial movement status: " << (forklift.isMoving() ? "Moving" : "Stationary") << std::endl;
+
+    // Record multiple positions to test history and movement detection
     for (int i = 0; i < 5; ++i)
     {
         // Create a position with slight offset
@@ -70,14 +177,27 @@ int main()
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         std::cout << "Recorded position " << (i + 1) << ": " << newPos.toString() << std::endl;
-    }
 
-    // Check movement status
-    std::cout << "Is equipment moving? " << (forklift.isMoving() ? "Yes" : "No") << std::endl;
+        // Check movement status after each position
+        if (i > 0)
+        {
+            std::cout << "Movement status: " << (forklift.isMoving() ? "Moving" : "Stationary") << std::endl;
+        }
+    }
+    printSeparator();
 
     // Get position history
     auto history = forklift.getPositionHistory();
     std::cout << "Position history size: " << history.size() << std::endl;
+
+    // Calculate total distance traveled
+    double totalDistance = 0.0;
+    for (size_t i = 1; i < history.size(); i++)
+    {
+        totalDistance += history[i - 1].distanceTo(history[i]);
+    }
+    std::cout << "Total distance traveled: " << totalDistance << " meters" << std::endl;
+    printSeparator();
 
     return 0;
 }
