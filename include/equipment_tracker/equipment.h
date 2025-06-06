@@ -19,6 +19,9 @@ namespace equipment_tracker
         // Constructor
         Equipment(EquipmentId id, EquipmentType type, std::string name);
 
+        // Constructor with custom history size
+        Equipment(EquipmentId id, EquipmentType type, std::string name, size_t max_history_size);
+
         // Rule of five (modern C++ practice)
         Equipment(const Equipment &other);
         Equipment &operator=(const Equipment &other);
