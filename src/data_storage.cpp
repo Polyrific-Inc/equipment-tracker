@@ -361,9 +361,30 @@ namespace equipment_tracker
         const Timestamp &start,
         const Timestamp &end)
     {
-        // Handle default timestamp values
-        Timestamp actual_start = (start == Timestamp{}) ? std::chrono::system_clock::time_point::min() : start;
-        Timestamp actual_end = (end == Timestamp{}) ? getCurrentTimestampHelper() : end;
+        // Validate input parameters
+        if (id.empty())
+        {
+            return std::vector<Position>();
+        }
+
+        // Handle default timestamp values with proper validation
+        Timestamp actual_start = start;
+        Timestamp actual_end = end;
+
+        if (start == Timestamp{})
+        {
+            actual_start = std::chrono::system_clock::time_point::min();
+        }
+        if (end == Timestamp{})
+        {
+            actual_end = getCurrentTimestampHelper();
+        }
+
+        // Validate time range
+        if (actual_start > actual_end)
+        {
+            return std::vector<Position>();
+        }
 
         // Try cache first
         PositionQueryKey key{id, actual_start, actual_end};
@@ -379,8 +400,11 @@ namespace equipment_tracker
         std::lock_guard<std::mutex> lock(mutex_);
         auto positions = getPositionHistoryInternal(id, actual_start, actual_end);
 
-        // Cache the result
-        position_cache_.put(key, positions);
+        // Only cache non-empty results to avoid caching temporary failures
+        if (!positions.empty())
+        {
+            position_cache_.put(key, positions);
+        }
 
         return positions;
     }
