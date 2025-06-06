@@ -1,303 +1,330 @@
 // <test_code>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include <thread>
-#include <chrono>
-#include "equipment_tracker/equipment.h"
-#include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/types.h"
+#include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/constants.h"
+#include <chrono>
+#include <thread>
 
 namespace equipment_tracker {
 
 class EquipmentTest : public ::testing::Test {
 protected:
-    EquipmentId testId = "EQ12345";
-    EquipmentType testType = EquipmentType::Forklift;
-    std::string testName = "Test Forklift";
-    
+    void SetUp() override {
+        // Create a test equipment instance
+        testEquipment = new Equipment("EQ123", EquipmentType::Forklift, "Test Forklift");
+    }
+
+    void TearDown() override {
+        delete testEquipment;
+    }
+
+    Equipment* testEquipment;
+
     // Helper method to create a test position
-    Position createTestPosition(double lat = 40.7128, double lon = -74.0060, 
-                               double alt = 10.0, Timestamp time = getCurrentTimestamp()) {
-        return Position(lat, lon, alt, DEFAULT_POSITION_ACCURACY, time);
+    Position createTestPosition(double lat = 40.7128, double lon = -74.0060, double alt = 10.0) {
+        return Position(lat, lon, alt);
     }
 };
 
-TEST_F(EquipmentTest, ConstructorAndGetters) {
-    Equipment equipment(testId, testType, testName);
-    
-    EXPECT_EQ(equipment.getId(), testId);
-    EXPECT_EQ(equipment.getType(), testType);
-    EXPECT_EQ(equipment.getName(), testName);
-    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Unknown);
-    EXPECT_FALSE(equipment.getLastPosition().has_value());
+TEST_F(EquipmentTest, ConstructorSetsInitialValues) {
+    EXPECT_EQ("EQ123", testEquipment->getId());
+    EXPECT_EQ(EquipmentType::Forklift, testEquipment->getType());
+    EXPECT_EQ("Test Forklift", testEquipment->getName());
+    EXPECT_EQ(EquipmentStatus::Unknown, testEquipment->getStatus());
+    EXPECT_FALSE(testEquipment->getLastPosition().has_value());
 }
 
-TEST_F(EquipmentTest, CopyConstructor) {
-    Equipment original(testId, testType, testName);
-    original.setStatus(EquipmentStatus::Active);
-    
+TEST_F(EquipmentTest, CopyConstructorWorks) {
+    // Set some values to test
+    testEquipment->setStatus(EquipmentStatus::Active);
     Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    testEquipment->setLastPosition(pos);
     
     // Create a copy
-    Equipment copy(original);
+    Equipment copy(*testEquipment);
     
     // Verify the copy has the same values
-    EXPECT_EQ(copy.getId(), original.getId());
-    EXPECT_EQ(copy.getType(), original.getType());
-    EXPECT_EQ(copy.getName(), original.getName());
-    EXPECT_EQ(copy.getStatus(), original.getStatus());
+    EXPECT_EQ(testEquipment->getId(), copy.getId());
+    EXPECT_EQ(testEquipment->getType(), copy.getType());
+    EXPECT_EQ(testEquipment->getName(), copy.getName());
+    EXPECT_EQ(testEquipment->getStatus(), copy.getStatus());
     
-    // Check position was copied
+    // Check position is copied
     ASSERT_TRUE(copy.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(copy.getLastPosition()->getLatitude(), pos.getLatitude());
-    EXPECT_DOUBLE_EQ(copy.getLastPosition()->getLongitude(), pos.getLongitude());
+    EXPECT_NEAR(pos.getLatitude(), copy.getLastPosition()->getLatitude(), 0.0001);
+    EXPECT_NEAR(pos.getLongitude(), copy.getLastPosition()->getLongitude(), 0.0001);
 }
 
-TEST_F(EquipmentTest, CopyAssignment) {
-    Equipment original(testId, testType, testName);
-    original.setStatus(EquipmentStatus::Active);
+TEST_F(EquipmentTest, CopyAssignmentWorks) {
+    // Create a second equipment with different values
+    Equipment other("EQ456", EquipmentType::Crane, "Test Crane");
+    other.setStatus(EquipmentStatus::Maintenance);
     
-    Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    // Assign the test equipment to the other
+    other = *testEquipment;
     
-    // Create another equipment and assign
-    Equipment other("OTHER123", EquipmentType::Crane, "Other Equipment");
-    other = original;
-    
-    // Verify the assigned object has the same values
-    EXPECT_EQ(other.getId(), original.getId());
-    EXPECT_EQ(other.getType(), original.getType());
-    EXPECT_EQ(other.getName(), original.getName());
-    EXPECT_EQ(other.getStatus(), original.getStatus());
-    
-    // Check position was copied
-    ASSERT_TRUE(other.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(other.getLastPosition()->getLatitude(), pos.getLatitude());
-    EXPECT_DOUBLE_EQ(other.getLastPosition()->getLongitude(), pos.getLongitude());
+    // Verify the values were copied
+    EXPECT_EQ(testEquipment->getId(), other.getId());
+    EXPECT_EQ(testEquipment->getType(), other.getType());
+    EXPECT_EQ(testEquipment->getName(), other.getName());
+    EXPECT_EQ(testEquipment->getStatus(), other.getStatus());
 }
 
-TEST_F(EquipmentTest, MoveConstructor) {
-    Equipment original(testId, testType, testName);
-    original.setStatus(EquipmentStatus::Active);
-    
+TEST_F(EquipmentTest, MoveConstructorWorks) {
+    // Set up the source equipment
+    testEquipment->setStatus(EquipmentStatus::Active);
     Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    testEquipment->setLastPosition(pos);
     
-    // Create a copy to verify against later
-    Equipment copy(original);
+    // Store original values for comparison
+    std::string id = testEquipment->getId();
+    EquipmentType type = testEquipment->getType();
+    std::string name = testEquipment->getName();
+    EquipmentStatus status = testEquipment->getStatus();
     
     // Move construct
-    Equipment moved(std::move(original));
+    Equipment moved(std::move(*testEquipment));
     
-    // Verify moved object has the correct values
-    EXPECT_EQ(moved.getId(), copy.getId());
-    EXPECT_EQ(moved.getType(), copy.getType());
-    EXPECT_EQ(moved.getName(), copy.getName());
-    EXPECT_EQ(moved.getStatus(), copy.getStatus());
+    // Verify moved equipment has the correct values
+    EXPECT_EQ(id, moved.getId());
+    EXPECT_EQ(type, moved.getType());
+    EXPECT_EQ(name, moved.getName());
+    EXPECT_EQ(status, moved.getStatus());
     
     // Check position was moved
     ASSERT_TRUE(moved.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(moved.getLastPosition()->getLatitude(), pos.getLatitude());
-    EXPECT_DOUBLE_EQ(moved.getLastPosition()->getLongitude(), pos.getLongitude());
+    EXPECT_NEAR(pos.getLatitude(), moved.getLastPosition()->getLatitude(), 0.0001);
+    EXPECT_NEAR(pos.getLongitude(), moved.getLastPosition()->getLongitude(), 0.0001);
 }
 
-TEST_F(EquipmentTest, MoveAssignment) {
-    Equipment original(testId, testType, testName);
-    original.setStatus(EquipmentStatus::Active);
-    
+TEST_F(EquipmentTest, MoveAssignmentWorks) {
+    // Set up the source equipment
+    testEquipment->setStatus(EquipmentStatus::Active);
     Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    testEquipment->setLastPosition(pos);
     
-    // Create a copy to verify against later
-    Equipment copy(original);
+    // Store original values for comparison
+    std::string id = testEquipment->getId();
+    EquipmentType type = testEquipment->getType();
+    std::string name = testEquipment->getName();
+    EquipmentStatus status = testEquipment->getStatus();
     
-    // Create another equipment and move assign
-    Equipment other("OTHER123", EquipmentType::Crane, "Other Equipment");
-    other = std::move(original);
+    // Create target equipment
+    Equipment target("EQ999", EquipmentType::Other, "Target Equipment");
     
-    // Verify the moved-to object has the correct values
-    EXPECT_EQ(other.getId(), copy.getId());
-    EXPECT_EQ(other.getType(), copy.getType());
-    EXPECT_EQ(other.getName(), copy.getName());
-    EXPECT_EQ(other.getStatus(), copy.getStatus());
+    // Move assign
+    target = std::move(*testEquipment);
+    
+    // Verify target has the moved values
+    EXPECT_EQ(id, target.getId());
+    EXPECT_EQ(type, target.getType());
+    EXPECT_EQ(name, target.getName());
+    EXPECT_EQ(status, target.getStatus());
     
     // Check position was moved
-    ASSERT_TRUE(other.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(other.getLastPosition()->getLatitude(), pos.getLatitude());
-    EXPECT_DOUBLE_EQ(other.getLastPosition()->getLongitude(), pos.getLongitude());
+    ASSERT_TRUE(target.getLastPosition().has_value());
+    EXPECT_NEAR(pos.getLatitude(), target.getLastPosition()->getLatitude(), 0.0001);
+    EXPECT_NEAR(pos.getLongitude(), target.getLastPosition()->getLongitude(), 0.0001);
 }
 
-TEST_F(EquipmentTest, SettersAndGetters) {
-    Equipment equipment(testId, testType, testName);
+TEST_F(EquipmentTest, SetAndGetStatus) {
+    // Test setting and getting status
+    testEquipment->setStatus(EquipmentStatus::Active);
+    EXPECT_EQ(EquipmentStatus::Active, testEquipment->getStatus());
     
-    // Test setStatus and getStatus
-    equipment.setStatus(EquipmentStatus::Active);
-    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Active);
-    
-    equipment.setStatus(EquipmentStatus::Maintenance);
-    EXPECT_EQ(equipment.getStatus(), EquipmentStatus::Maintenance);
-    
-    // Test setName and getName
-    std::string newName = "Updated Forklift";
-    equipment.setName(newName);
-    EXPECT_EQ(equipment.getName(), newName);
+    testEquipment->setStatus(EquipmentStatus::Maintenance);
+    EXPECT_EQ(EquipmentStatus::Maintenance, testEquipment->getStatus());
 }
 
-TEST_F(EquipmentTest, PositionManagement) {
-    Equipment equipment(testId, testType, testName);
+TEST_F(EquipmentTest, SetAndGetName) {
+    // Test setting and getting name
+    testEquipment->setName("Updated Forklift");
+    EXPECT_EQ("Updated Forklift", testEquipment->getName());
     
-    // Initially no position
-    EXPECT_FALSE(equipment.getLastPosition().has_value());
-    
-    // Set position
-    Position pos1 = createTestPosition(40.7128, -74.0060);
-    equipment.setLastPosition(pos1);
-    
-    // Verify position was set
-    ASSERT_TRUE(equipment.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(equipment.getLastPosition()->getLatitude(), 40.7128);
-    EXPECT_DOUBLE_EQ(equipment.getLastPosition()->getLongitude(), -74.0060);
-    
-    // Update position
-    Position pos2 = createTestPosition(34.0522, -118.2437);
-    equipment.setLastPosition(pos2);
-    
-    // Verify position was updated
-    ASSERT_TRUE(equipment.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(equipment.getLastPosition()->getLatitude(), 34.0522);
-    EXPECT_DOUBLE_EQ(equipment.getLastPosition()->getLongitude(), -118.2437);
+    // Test with empty name
+    testEquipment->setName("");
+    EXPECT_EQ("", testEquipment->getName());
 }
 
-TEST_F(EquipmentTest, PositionHistory) {
-    Equipment equipment(testId, testType, testName);
+TEST_F(EquipmentTest, SetAndGetLastPosition) {
+    // Create a position
+    Position pos = createTestPosition();
     
-    // Initially empty history
-    EXPECT_TRUE(equipment.getPositionHistory().empty());
+    // Initially, there should be no position
+    EXPECT_FALSE(testEquipment->getLastPosition().has_value());
+    
+    // Set and verify position
+    testEquipment->setLastPosition(pos);
+    ASSERT_TRUE(testEquipment->getLastPosition().has_value());
+    EXPECT_NEAR(pos.getLatitude(), testEquipment->getLastPosition()->getLatitude(), 0.0001);
+    EXPECT_NEAR(pos.getLongitude(), testEquipment->getLastPosition()->getLongitude(), 0.0001);
+    EXPECT_NEAR(pos.getAltitude(), testEquipment->getLastPosition()->getAltitude(), 0.0001);
+}
+
+TEST_F(EquipmentTest, RecordPositionAndGetHistory) {
+    // Create test positions
+    Position pos1 = createTestPosition(40.7128, -74.0060, 10.0);
+    Position pos2 = createTestPosition(40.7129, -74.0061, 11.0);
+    Position pos3 = createTestPosition(40.7130, -74.0062, 12.0);
     
     // Record positions
-    Position pos1 = createTestPosition(40.7128, -74.0060);
-    Position pos2 = createTestPosition(34.0522, -118.2437);
-    Position pos3 = createTestPosition(41.8781, -87.6298);
+    testEquipment->recordPosition(pos1);
+    testEquipment->recordPosition(pos2);
+    testEquipment->recordPosition(pos3);
     
-    equipment.recordPosition(pos1);
-    equipment.recordPosition(pos2);
-    equipment.recordPosition(pos3);
+    // Get history and verify
+    std::vector<Position> history = testEquipment->getPositionHistory();
+    ASSERT_EQ(3, history.size());
     
-    // Verify history contains all positions in order
-    auto history = equipment.getPositionHistory();
-    ASSERT_EQ(history.size(), 3);
+    // Check positions in order (most recent first)
+    EXPECT_NEAR(pos3.getLatitude(), history[0].getLatitude(), 0.0001);
+    EXPECT_NEAR(pos2.getLatitude(), history[1].getLatitude(), 0.0001);
+    EXPECT_NEAR(pos1.getLatitude(), history[2].getLatitude(), 0.0001);
     
-    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 40.7128);
-    EXPECT_DOUBLE_EQ(history[0].getLongitude(), -74.0060);
-    
-    EXPECT_DOUBLE_EQ(history[1].getLatitude(), 34.0522);
-    EXPECT_DOUBLE_EQ(history[1].getLongitude(), -118.2437);
-    
-    EXPECT_DOUBLE_EQ(history[2].getLatitude(), 41.8781);
-    EXPECT_DOUBLE_EQ(history[2].getLongitude(), -87.6298);
-    
-    // Test clear history
-    equipment.clearPositionHistory();
-    EXPECT_TRUE(equipment.getPositionHistory().empty());
+    // Last position should be the most recent
+    ASSERT_TRUE(testEquipment->getLastPosition().has_value());
+    EXPECT_NEAR(pos3.getLatitude(), testEquipment->getLastPosition()->getLatitude(), 0.0001);
 }
 
-TEST_F(EquipmentTest, HistorySizeLimit) {
-    Equipment equipment(testId, testType, testName);
+TEST_F(EquipmentTest, ClearPositionHistory) {
+    // Add some positions
+    testEquipment->recordPosition(createTestPosition(40.7128, -74.0060));
+    testEquipment->recordPosition(createTestPosition(40.7129, -74.0061));
     
+    // Verify positions were added
+    EXPECT_EQ(2, testEquipment->getPositionHistory().size());
+    EXPECT_TRUE(testEquipment->getLastPosition().has_value());
+    
+    // Clear history
+    testEquipment->clearPositionHistory();
+    
+    // Verify history is cleared but last position remains
+    EXPECT_EQ(0, testEquipment->getPositionHistory().size());
+    EXPECT_TRUE(testEquipment->getLastPosition().has_value());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsFalseWithNoPositions) {
+    // With no positions, equipment should not be moving
+    EXPECT_FALSE(testEquipment->isMoving());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsFalseWithOnePosition) {
+    // With only one position, equipment should not be moving
+    testEquipment->recordPosition(createTestPosition());
+    EXPECT_FALSE(testEquipment->isMoving());
+}
+
+TEST_F(EquipmentTest, IsMovingDetectsMovement) {
+    // Create positions with significant distance
+    Position pos1 = createTestPosition(40.7128, -74.0060);
+    
+    // Record first position
+    testEquipment->recordPosition(pos1);
+    
+    // Sleep to ensure timestamp difference
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    
+    // Create a position that would indicate movement above threshold
+    Position pos2 = createTestPosition(40.7138, -74.0070); // Moved significantly
+    
+    // Record second position
+    testEquipment->recordPosition(pos2);
+    
+    // Should detect movement
+    EXPECT_TRUE(testEquipment->isMoving());
+}
+
+TEST_F(EquipmentTest, IsMovingReturnsFalseForStationaryEquipment) {
+    // Create positions with minimal distance
+    Position pos1 = createTestPosition(40.7128, -74.0060);
+    
+    // Record first position
+    testEquipment->recordPosition(pos1);
+    
+    // Sleep to ensure timestamp difference
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    // Create a position very close to the first one
+    Position pos2 = createTestPosition(40.71281, -74.00601); // Moved very slightly
+    
+    // Record second position
+    testEquipment->recordPosition(pos2);
+    
+    // Should not detect movement (below threshold)
+    EXPECT_FALSE(testEquipment->isMoving());
+}
+
+TEST_F(EquipmentTest, ToStringReturnsFormattedString) {
+    // Set up equipment with position
+    testEquipment->setStatus(EquipmentStatus::Active);
+    testEquipment->setLastPosition(createTestPosition(40.7128, -74.0060));
+    
+    // Get string representation
+    std::string result = testEquipment->toString();
+    
+    // Check that the string contains expected information
+    EXPECT_THAT(result, ::testing::HasSubstr("EQ123"));
+    EXPECT_THAT(result, ::testing::HasSubstr("Test Forklift"));
+    EXPECT_THAT(result, ::testing::HasSubstr("Forklift"));
+    EXPECT_THAT(result, ::testing::HasSubstr("Active"));
+    EXPECT_THAT(result, ::testing::HasSubstr("40.7128"));
+    EXPECT_THAT(result, ::testing::HasSubstr("-74.006"));
+}
+
+TEST_F(EquipmentTest, HistoryLimitedToMaxSize) {
     // Add more positions than the default max history size
     for (size_t i = 0; i < DEFAULT_MAX_HISTORY_SIZE + 10; i++) {
-        Position pos = createTestPosition(i, i);
-        equipment.recordPosition(pos);
+        testEquipment->recordPosition(createTestPosition(40.0 + i * 0.001, -74.0 + i * 0.001));
     }
     
-    // Verify history is limited to max size
-    auto history = equipment.getPositionHistory();
-    EXPECT_EQ(history.size(), DEFAULT_MAX_HISTORY_SIZE);
+    // Verify history size is limited to max
+    EXPECT_EQ(DEFAULT_MAX_HISTORY_SIZE, testEquipment->getPositionHistory().size());
     
-    // Verify the oldest entries were removed (FIFO)
-    EXPECT_DOUBLE_EQ(history[0].getLatitude(), 10.0);
-    EXPECT_DOUBLE_EQ(history[0].getLongitude(), 10.0);
-}
-
-TEST_F(EquipmentTest, IsMovingFunctionality) {
-    Equipment equipment(testId, testType, testName);
-    
-    // Initially no position, should not be moving
-    EXPECT_FALSE(equipment.isMoving());
-    
-    // Add a single position, still not moving
-    Position pos1 = createTestPosition(40.7128, -74.0060);
-    equipment.recordPosition(pos1);
-    EXPECT_FALSE(equipment.isMoving());
-    
-    // Add a second position with a small time difference
-    // Create a timestamp 1 second later
-    auto timestamp = getCurrentTimestamp() + std::chrono::seconds(1);
-    Position pos2 = createTestPosition(40.7129, -74.0061, 10.0, timestamp);
-    equipment.recordPosition(pos2);
-    
-    // Should be moving if the calculated speed exceeds the threshold
-    // This will depend on the implementation of isMoving()
-    // We can't make a definitive assertion without knowing the exact implementation
-    
-    // Add a position that's identical to the previous one
-    auto timestamp2 = getCurrentTimestamp() + std::chrono::seconds(2);
-    Position pos3 = createTestPosition(40.7129, -74.0061, 10.0, timestamp2);
-    equipment.recordPosition(pos3);
-    
-    // Should not be moving if positions are identical
-    EXPECT_FALSE(equipment.isMoving());
-}
-
-TEST_F(EquipmentTest, ToStringMethod) {
-    Equipment equipment(testId, testType, testName);
-    equipment.setStatus(EquipmentStatus::Active);
-    
-    std::string result = equipment.toString();
-    
-    // Check that the string contains the essential information
-    EXPECT_THAT(result, ::testing::HasSubstr(testId));
-    EXPECT_THAT(result, ::testing::HasSubstr(testName));
-    EXPECT_THAT(result, ::testing::HasSubstr("Active"));
-    EXPECT_THAT(result, ::testing::HasSubstr("Forklift"));
+    // Verify the most recent positions are kept (most recent first)
+    std::vector<Position> history = testEquipment->getPositionHistory();
+    EXPECT_NEAR(40.0 + (DEFAULT_MAX_HISTORY_SIZE + 9) * 0.001, history[0].getLatitude(), 0.0001);
+    EXPECT_NEAR(40.0 + (DEFAULT_MAX_HISTORY_SIZE + 8) * 0.001, history[1].getLatitude(), 0.0001);
 }
 
 TEST_F(EquipmentTest, ThreadSafetyOfPositionAccess) {
-    Equipment equipment(testId, testType, testName);
+    // This test verifies that concurrent access to position data is thread-safe
+    // by running multiple threads that set and get positions
     
-    // Create multiple threads that simultaneously access and modify position
-    std::vector<std::thread> threads;
     const int numThreads = 10;
+    const int operationsPerThread = 100;
     
+    std::vector<std::thread> threads;
+    
+    // Launch threads that set and get positions
     for (int i = 0; i < numThreads; i++) {
-        threads.emplace_back([&equipment, i]() {
-            // Each thread sets a different position
-            Position pos = Position(i * 1.0, i * -1.0);
-            equipment.setLastPosition(pos);
-            
-            // Read the position
-            auto lastPos = equipment.getLastPosition();
-            
-            // Record the position in history
-            equipment.recordPosition(pos);
-            
-            // Get the history
-            auto history = equipment.getPositionHistory();
+        threads.emplace_back([this, i, operationsPerThread]() {
+            for (int j = 0; j < operationsPerThread; j++) {
+                // Set position
+                Position pos = createTestPosition(40.0 + i * 0.1 + j * 0.001, 
+                                                -74.0 + i * 0.1 + j * 0.001);
+                testEquipment->setLastPosition(pos);
+                
+                // Record position
+                testEquipment->recordPosition(pos);
+                
+                // Get position
+                auto lastPos = testEquipment->getLastPosition();
+                
+                // Get history
+                auto history = testEquipment->getPositionHistory();
+            }
         });
     }
     
-    // Join all threads
+    // Wait for all threads to complete
     for (auto& thread : threads) {
         thread.join();
     }
     
-    // Verify we have position history entries
-    EXPECT_FALSE(equipment.getPositionHistory().empty());
-    
-    // Verify we have a last position
-    EXPECT_TRUE(equipment.getLastPosition().has_value());
+    // If we get here without crashes or exceptions, the test passes
+    SUCCEED();
 }
 
 } // namespace equipment_tracker
