@@ -37,10 +37,10 @@ public:
     }
 };
 
-// Function with memory leak
+// Function with memory leak - fixed with smart pointer
 void createMemoryLeak() {
-    int* ptr = new int[1000];
-    // No delete[] - memory leak
+    std::unique_ptr<int[]> ptr = std::make_unique<int[]>(1000);
+    // Memory automatically freed when ptr goes out of scope
 }
 
 // Inefficient sorting function
@@ -95,4 +95,4 @@ int main() {
     }
 
     return 0;
-} 
+}
