@@ -58,9 +58,13 @@ void inefficientSort(std::vector<int>& arr) {
 // Function with unnecessary object creation
 void processData() {
     std::vector<int> temp;
+    temp.reserve(1000000);  // Pre-allocate memory to avoid reallocations
     for (int i = 0; i < 1000000; i++) {
-        temp.push_back(i);  // Frequent reallocations
+        temp.push_back(i);
     }
+    // Alternative: use constructor for even better performance than before
+    // std::vector<int> temp(1000000);
+    // std::iota(temp.begin(), temp.end(), 0);
 }
 
 // Main function demonstrating the issues
