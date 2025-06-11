@@ -79,67 +79,65 @@ namespace equipment_tracker
 
     void Equipment::recordPosition(const Position &position)
     {
+        // Validate position data before acquiring lock
+        if (!position.isValid()) {
+            spdlog::error("Position validation failed for equipment {}: Invalid position data", name_);
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+
         try {
-            // Validate position data
-            if (!isValidPosition(position)) 
-            {
-                throw std::invalid_argument("Invalid position data provided");
-            }
-
-            std::lock_guard<std::mutex> lock(mutex_);
-
             // Check if position represents valid movement
-            if (!last_position_.has_value()) 
-            {
-                // First position, no movement validation needed
-                last_position_ = position;
-            } 
-            else 
-            {
+            if (last_position_.has_value()) {
                 const double distanceFromLast = position.distanceTo(*last_position_);
-                const double timeDiffSeconds = std::chrono::duration_cast<std::chrono::seconds>(
-                    position.getTimestamp() - last_position_->getTimestamp()).count();
+                const auto timeDiff = position.getTimestamp() - last_position_->getTimestamp();
+                const double timeDiffSeconds = std::chrono::duration<double>(timeDiff).count();
 
-                // Check for unrealistic movement
-                if (timeDiffSeconds > 0) 
-                {
+                // Validate time progression and check for unrealistic movement
+                if (timeDiffSeconds > 0.0) {
                     const double speedMps = distanceFromLast / timeDiffSeconds;
-                    if (speedMps > MAX_ALLOWED_SPEED) 
-                    {
-                        std::string error_msg = "Detected unrealistic movement speed: " + 
-                            std::to_string(speedMps) + " m/s for equipment " + name_;
-                        spdlog::error(error_msg);
-                        throw std::runtime_error(error_msg);
+                    static constexpr double MAX_ALLOWED_SPEED = 50.0; // 50 m/s max speed for warehouse equipment
+                    
+                    if (speedMps > MAX_ALLOWED_SPEED) {
+                        spdlog::warn("Detected unrealistic movement speed: {:.2f} m/s for equipment {} (distance: {:.2f}m, time: {:.2f}s). Position update skipped.", 
+                                   speedMps, name_, distanceFromLast, timeDiffSeconds);
+                        return;
                     }
+                } else if (timeDiffSeconds < 0.0) {
+                    spdlog::warn("Received position with timestamp in the past for equipment {}. Position update skipped.", name_);
+                    return;
                 }
+                // timeDiffSeconds == 0.0 is acceptable (same timestamp)
             }
-        } 
-        catch (const std::invalid_argument& e) 
-        {
-            // Log validation error with equipment details
-            spdlog::error("Position validation failed for equipment {}: {}", name_, e.what());
-            return;
-        } 
-        catch (const std::runtime_error& e) 
-        {
-            // Log movement validation error with equipment details
-            spdlog::error("Movement validation failed for equipment {}: {}", name_, e.what());
-            return;
+
+            // Add to history with bounds checking
+            if (position_history_.size() >= max_history_size_) {
+                position_history_.erase(position_history_.begin());
+            }
+            position_history_.push_back(position);
+
+            // Update last position and status
+            last_position_ = position;
+            status_ = EquipmentStatus::Active;
+
+            // Notify position change listeners if callback is set
+            if (position_update_callback_) {
+                position_update_callback_(position);
+            }
         }
-
-        // Add to history with bounds checking
-        if (position_history_.size() >= max_history_size_) 
-        {
-            position_history_.erase(position_history_.begin());
+        catch (const std::exception& e) {
+            spdlog::error("Error processing position update for equipment {}: {}", name_, e.what());
+            // Don't return here - we want to continue with basic position recording
+            
+            // Fallback: record position without validation
+            if (position_history_.size() >= max_history_size_) {
+                position_history_.erase(position_history_.begin());
+            }
+            position_history_.push_back(position);
+            last_position_ = position;
+            status_ = EquipmentStatus::Active;
         }
-        position_history_.push_back(position);
-
-        // Update last position and status
-        last_position_ = position;
-        status_ = EquipmentStatus::Active;
-
-        // Notify any position change listeners
-        notifyPositionUpdate(position);
     }
 
     std::vector<Position> Equipment::getPositionHistory() const
