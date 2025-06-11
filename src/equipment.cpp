@@ -77,6 +77,24 @@ namespace equipment_tracker
         last_position_ = position;
     }
 
+    double Equipment::getMaxAllowedSpeed() const {
+        // Equipment-specific speed limits based on type
+        switch (type_) {
+            case EquipmentType::Forklift:
+                return 15.0; // 15 m/s max for forklifts
+            case EquipmentType::Crane:
+                return 5.0;  // 5 m/s max for cranes
+            case EquipmentType::Bulldozer:
+                return 8.0;  // 8 m/s max for bulldozers
+            case EquipmentType::Excavator:
+                return 6.0;  // 6 m/s max for excavators
+            case EquipmentType::Truck:
+                return 25.0; // 25 m/s max for trucks
+            default:
+                return 10.0; // Conservative default
+        }
+    }
+
     void Equipment::recordPosition(const Position &position)
     {
         // Validate position data before acquiring lock
@@ -97,7 +115,7 @@ namespace equipment_tracker
                 // Validate time progression and check for unrealistic movement
                 if (timeDiffSeconds > 0.0) {
                     const double speedMps = distanceFromLast / timeDiffSeconds;
-                    static constexpr double MAX_ALLOWED_SPEED = 50.0; // 50 m/s max speed for warehouse equipment
+                    const double MAX_ALLOWED_SPEED = getMaxAllowedSpeed();
                     
                     if (speedMps > MAX_ALLOWED_SPEED) {
                         spdlog::warn("Detected unrealistic movement speed: {:.2f} m/s for equipment {} (distance: {:.2f}m, time: {:.2f}s). Position update skipped.", 
