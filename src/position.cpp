@@ -43,10 +43,19 @@ namespace equipment_tracker
             return 0.0;
         }
 
-        // Early return for identical coordinates (configurable epsilon for warehouse precision)
-        const double epsilon = 1e-6; // ~10cm precision, suitable for warehouse equipment
-        if (std::abs(latitude_ - other.latitude_) < epsilon &&
-            std::abs(longitude_ - other.longitude_) < epsilon) {
+        // Frandi: Early return for very close positions using distance-based threshold
+        const double min_distance_threshold = 0.1; // 10cm in meters
+        const double lat_diff = std::abs(latitude_ - other.latitude_);
+        const double lon_diff = std::abs(longitude_ - other.longitude_);
+
+        // Quick distance approximation for small differences
+        // Use the more restrictive latitude for longitude scaling
+        const double lat_for_scaling = std::max(std::abs(latitude_), std::abs(other.latitude_));
+        const double lat_diff_m = lat_diff * 111320.0; // degrees to meters
+        const double lon_diff_m = lon_diff * 111320.0 * std::cos(lat_for_scaling * M_PI / 180.0);
+        const double approx_distance_sq = lat_diff_m * lat_diff_m + lon_diff_m * lon_diff_m;
+
+        if (approx_distance_sq < min_distance_threshold * min_distance_threshold) {
             return 0.0;
         }
 
