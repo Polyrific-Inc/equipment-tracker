@@ -82,6 +82,12 @@ namespace equipment_tracker
         switch (type_) {
             case EquipmentType::Forklift:
                 return 15.0; // 15 m/s max for forklifts
+            case EquipmentType::ReachTruck:
+                return 12.0; // 12 m/s max for reach trucks
+            case EquipmentType::OrderPicker:
+                return 8.0;  // 8 m/s max for order pickers
+            case EquipmentType::Pallet:
+                return 20.0; // 20 m/s max for pallet trucks
             case EquipmentType::Crane:
                 return 5.0;  // 5 m/s max for cranes
             case EquipmentType::Bulldozer:
