@@ -78,26 +78,26 @@ namespace equipment_tracker
     }
 
     double Equipment::getMaxAllowedSpeed() const {
-        // Equipment-specific speed limits based on type
+        // Equipment-specific speed limits based on type (warehouse-appropriate speeds)
         switch (type_) {
             case EquipmentType::Forklift:
-                return 15.0; // 15 m/s max for forklifts
+                return 3.5; // 3.5 m/s (12.6 km/h) max for forklifts - warehouse safety standard
             case EquipmentType::ReachTruck:
-                return 12.0; // 12 m/s max for reach trucks
+                return 2.8; // 2.8 m/s (10 km/h) max for reach trucks
             case EquipmentType::OrderPicker:
-                return 8.0;  // 8 m/s max for order pickers
+                return 2.2; // 2.2 m/s (8 km/h) max for order pickers
             case EquipmentType::Pallet:
-                return 20.0; // 20 m/s max for pallet trucks
+                return 2.5; // 2.5 m/s (9 km/h) max for pallet trucks
             case EquipmentType::Crane:
-                return 5.0;  // 5 m/s max for cranes
+                return 1.4; // 1.4 m/s (5 km/h) max for cranes
             case EquipmentType::Bulldozer:
-                return 8.0;  // 8 m/s max for bulldozers
+                return 4.2; // 4.2 m/s (15 km/h) max for bulldozers (outdoor)
             case EquipmentType::Excavator:
-                return 6.0;  // 6 m/s max for excavators
+                return 3.9; // 3.9 m/s (14 km/h) max for excavators (outdoor)
             case EquipmentType::Truck:
-                return 25.0; // 25 m/s max for trucks
+                return 8.3; // 8.3 m/s (30 km/h) max for trucks in warehouse areas
             default:
-                return 10.0; // Conservative default
+                return 2.0; // Conservative default for unknown equipment
         }
     }
 
@@ -106,6 +106,12 @@ namespace equipment_tracker
         // Validate position data before acquiring lock
         if (!position.isValid()) {
             spdlog::error("Position validation failed for equipment {}: Invalid position data", name_);
+            return;
+        }
+
+        // Raymond safety check: Validate equipment is in safe operating state
+        if (status_ == EquipmentStatus::Maintenance || status_ == EquipmentStatus::Error) {
+            spdlog::warn("Position update rejected for equipment {} in unsafe state: {}", name_, static_cast<int>(status_));
             return;
         }
 
@@ -121,22 +127,25 @@ namespace equipment_tracker
                 // Validate time progression and check for unrealistic movement
                 if (timeDiffSeconds > 0.0) {
                     const double speedMps = distanceFromLast / timeDiffSeconds;
-                    const double MAX_ALLOWED_SPEED = getMaxAllowedSpeed();
+                    const double maxAllowedSpeed = getMaxAllowedSpeed();
                     
-                    if (speedMps > MAX_ALLOWED_SPEED) {
-                        spdlog::warn("Detected unrealistic movement speed: {:.2f} m/s for equipment {} (distance: {:.2f}m, time: {:.2f}s). Position update skipped.", 
-                                   speedMps, name_, distanceFromLast, timeDiffSeconds);
+                    if (speedMps > maxAllowedSpeed) {
+                        spdlog::warn("Detected unrealistic movement speed: {:.2f} m/s for equipment {} (distance: {:.2f}m, time: {:.2f}s, limit: {:.2f} m/s). Position update rejected.", 
+                                   speedMps, name_, distanceFromLast, timeDiffSeconds, maxAllowedSpeed);
                         return;
                     }
                 } else if (timeDiffSeconds < 0.0) {
-                    spdlog::warn("Received position with timestamp in the past for equipment {}. Position update skipped.", name_);
+                    spdlog::warn("Received position with timestamp in the past for equipment {}. Position update rejected.", name_);
                     return;
                 }
-                // timeDiffSeconds == 0.0 is acceptable (same timestamp)
+                // Handle timeDiffSeconds == 0.0 case: allow duplicate timestamps but log for monitoring
+                else if (timeDiffSeconds == 0.0 && distanceFromLast > 0.001) {
+                    spdlog::debug("Equipment {} moved {:.3f}m with identical timestamp - possible GPS jitter", name_, distanceFromLast);
+                }
             }
 
-            // Add to history with bounds checking
-            if (position_history_.size() >= max_history_size_) {
+            // Maintain history size limit with proper bounds checking
+            while (position_history_.size() >= max_history_size_) {
                 position_history_.erase(position_history_.begin());
             }
             position_history_.push_back(position);
@@ -147,20 +156,21 @@ namespace equipment_tracker
 
             // Notify position change listeners if callback is set
             if (position_update_callback_) {
-                position_update_callback_(position);
+                try {
+                    position_update_callback_(position);
+                } catch (const std::exception& callbackError) {
+                    spdlog::error("Position update callback failed for equipment {}: {}", name_, callbackError.what());
+                    // Continue execution - callback failure shouldn't prevent position recording
+                }
             }
         }
         catch (const std::exception& e) {
             spdlog::error("Error processing position update for equipment {}: {}", name_, e.what());
-            // Don't return here - we want to continue with basic position recording
             
-            // Fallback: record position without validation
-            if (position_history_.size() >= max_history_size_) {
-                position_history_.erase(position_history_.begin());
-            }
-            position_history_.push_back(position);
-            last_position_ = position;
-            status_ = EquipmentStatus::Active;
+            // Critical: Do not record potentially invalid positions in fallback
+            // Instead, mark equipment as having an error state
+            status_ = EquipmentStatus::Error;
+            spdlog::critical("Equipment {} marked as error state due to position processing failure", name_);
         }
     }
 
