@@ -4,6 +4,9 @@
 #include <memory>
 #include <chrono>
 #include <thread>
+#include <algorithm>  // For std::sort, std::iota
+#include <sstream>    // For std::ostringstream
+#include <numeric>    // For std::iota (alternative)
 
 // Global variables - bad practice
 std::vector<int> globalVector;
