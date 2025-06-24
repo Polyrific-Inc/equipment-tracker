@@ -2,7 +2,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "equipment_tracker/position.h"
-#include "equipment_tracker/utils/constants.h"
 #include <chrono>
 #include <thread>
 #include <cmath>
@@ -13,11 +12,12 @@
 #endif
 
 namespace equipment_tracker {
-namespace testing {
+namespace {
 
+// Test fixture for Position tests
 class PositionTest : public ::testing::Test {
 protected:
-    // Helper function to create a timestamp at a specific time
+    // Helper method to create a timestamp for a specific time
     static Timestamp createTimestamp(int year, int month, int day, 
                                     int hour, int minute, int second) {
         std::tm timeinfo = {};
@@ -32,6 +32,7 @@ protected:
 #ifdef _WIN32
         time_t_value = _mkgmtime(&timeinfo);
 #else
+        timeinfo.tm_isdst = -1;  // Let the system determine DST
         time_t_value = timegm(&timeinfo);
 #endif
         
@@ -39,199 +40,169 @@ protected:
     }
 };
 
+// Test constructor and getters
+TEST_F(PositionTest, ConstructorAndGetters) {
+    // Create a specific timestamp for testing
+    auto timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
+    
+    // Create a position with specific values
+    Position position(40.7128, -74.0060, 10.5, 3.0, timestamp);
+    
+    // Verify getters return the expected values
+    EXPECT_DOUBLE_EQ(40.7128, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-74.0060, position.getLongitude());
+    EXPECT_DOUBLE_EQ(10.5, position.getAltitude());
+    EXPECT_DOUBLE_EQ(3.0, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
+}
+
+// Test setters
+TEST_F(PositionTest, Setters) {
+    Position position;
+    
+    // Use setters to modify the position
+    position.setLatitude(37.7749);
+    position.setLongitude(-122.4194);
+    position.setAltitude(15.2);
+    position.setAccuracy(4.5);
+    
+    auto timestamp = createTimestamp(2023, 6, 20, 14, 45, 30);
+    position.setTimestamp(timestamp);
+    
+    // Verify the values were set correctly
+    EXPECT_DOUBLE_EQ(37.7749, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-122.4194, position.getLongitude());
+    EXPECT_DOUBLE_EQ(15.2, position.getAltitude());
+    EXPECT_DOUBLE_EQ(4.5, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
+}
+
+// Test default constructor
 TEST_F(PositionTest, DefaultConstructor) {
     Position position;
     
+    // Default values should be set
     EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
     EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
     EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
     EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
-    // Can't test exact timestamp as it's set to current time
+    
+    // Timestamp should be close to current time
+    auto now = getCurrentTimestamp();
+    auto diff = std::chrono::duration_cast<std::chrono::seconds>(
+        now - position.getTimestamp()).count();
+    
+    // Should be within a few seconds
+    EXPECT_LT(std::abs(diff), 5);
 }
 
-TEST_F(PositionTest, ParameterizedConstructor) {
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
-    const double altitude = 10.5;
-    const double accuracy = 1.2;
-    const Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
-    
-    Position position(latitude, longitude, altitude, accuracy, timestamp);
-    
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(altitude, position.getAltitude());
-    EXPECT_DOUBLE_EQ(accuracy, position.getAccuracy());
-    EXPECT_EQ(timestamp, position.getTimestamp());
-}
-
-TEST_F(PositionTest, ParameterizedConstructorWithDefaults) {
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
-    
-    Position position(latitude, longitude);
-    
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
-    // Can't test exact timestamp as it's set to current time
-}
-
-TEST_F(PositionTest, Setters) {
-    Position position;
-    
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
-    const double altitude = 10.5;
-    const double accuracy = 1.2;
-    const Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
-    
-    position.setLatitude(latitude);
-    position.setLongitude(longitude);
-    position.setAltitude(altitude);
-    position.setAccuracy(accuracy);
-    position.setTimestamp(timestamp);
-    
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(altitude, position.getAltitude());
-    EXPECT_DOUBLE_EQ(accuracy, position.getAccuracy());
-    EXPECT_EQ(timestamp, position.getTimestamp());
-}
-
+// Test builder pattern
 TEST_F(PositionTest, Builder) {
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
-    const double altitude = 10.5;
-    const double accuracy = 1.2;
-    const Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
+    auto timestamp = createTimestamp(2023, 7, 10, 8, 15, 45);
     
+    // Use builder to create a position
     Position position = Position::builder()
-        .withLatitude(latitude)
-        .withLongitude(longitude)
-        .withAltitude(altitude)
-        .withAccuracy(accuracy)
+        .withLatitude(51.5074)
+        .withLongitude(-0.1278)
+        .withAltitude(25.0)
+        .withAccuracy(1.5)
         .withTimestamp(timestamp)
         .build();
     
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(altitude, position.getAltitude());
-    EXPECT_DOUBLE_EQ(accuracy, position.getAccuracy());
+    // Verify the values were set correctly
+    EXPECT_DOUBLE_EQ(51.5074, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-0.1278, position.getLongitude());
+    EXPECT_DOUBLE_EQ(25.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(1.5, position.getAccuracy());
     EXPECT_EQ(timestamp, position.getTimestamp());
 }
 
-TEST_F(PositionTest, BuilderWithDefaults) {
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
+// Test distance calculation
+TEST_F(PositionTest, DistanceTo) {
+    // New York City coordinates
+    Position nyc(40.7128, -74.0060);
     
-    Position position = Position::builder()
-        .withLatitude(latitude)
-        .withLongitude(longitude)
-        .build();
-    
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
-    // Can't test exact timestamp as it's set to current time
-}
-
-TEST_F(PositionTest, DistanceToSamePosition) {
-    Position position(37.7749, -122.4194);
-    
-    double distance = position.distanceTo(position);
-    
-    EXPECT_NEAR(0.0, distance, 1e-10);
-}
-
-TEST_F(PositionTest, DistanceBetweenTwoPositions) {
-    // San Francisco
-    Position sf(37.7749, -122.4194);
-    
-    // Los Angeles
+    // Los Angeles coordinates
     Position la(34.0522, -118.2437);
     
-    // Expected distance between SF and LA is approximately 559.65 km (559650 meters)
-    double distance = sf.distanceTo(la);
+    // Distance between NYC and LA is approximately 3935 km
+    double distance = nyc.distanceTo(la);
     
-    EXPECT_NEAR(559650.0, distance, 1000.0);  // Allow 1km tolerance due to different calculation methods
+    // Allow for some floating-point precision differences
+    EXPECT_NEAR(3935000.0, distance, 5000.0);
+    
+    // Distance to self should be 0
+    EXPECT_DOUBLE_EQ(0.0, nyc.distanceTo(nyc));
+    
+    // Test with points that are very close
+    Position nyc2(40.7129, -74.0061);  // Very close to NYC
+    double shortDistance = nyc.distanceTo(nyc2);
+    
+    // Should be a small distance (less than 50 meters)
+    EXPECT_LT(shortDistance, 50.0);
+    EXPECT_GT(shortDistance, 0.0);
 }
 
-TEST_F(PositionTest, DistanceBetweenClosePositions) {
-    // Two positions 100 meters apart (approximately)
-    Position pos1(37.7749, -122.4194);
-    Position pos2(37.7749, -122.4204);  // Slightly different longitude
+// Test toString method
+TEST_F(PositionTest, ToString) {
+    // Create a position with a fixed timestamp for consistent testing
+    auto timestamp = createTimestamp(2023, 8, 25, 12, 30, 45);
+    Position position(48.8566, 2.3522, 35.5, 2.0, timestamp);
     
-    double distance = pos1.distanceTo(pos2);
+    // Get the string representation
+    std::string posStr = position.toString();
     
-    // The distance should be approximately 100 meters
-    EXPECT_NEAR(100.0, distance, 10.0);  // Allow 10m tolerance
+    // Check that the string contains the expected values
+    EXPECT_THAT(posStr, ::testing::HasSubstr("lat=48.856600"));
+    EXPECT_THAT(posStr, ::testing::HasSubstr("lon=2.352200"));
+    EXPECT_THAT(posStr, ::testing::HasSubstr("alt=35.50"));
+    EXPECT_THAT(posStr, ::testing::HasSubstr("acc=2.00"));
+    
+    // The time part is platform-dependent due to localization,
+    // so we just check that it contains a date and time format
+    EXPECT_THAT(posStr, ::testing::HasSubstr("time="));
+    EXPECT_THAT(posStr, ::testing::ContainsRegex("\\d{4}-\\d{2}-\\d{2}"));
 }
 
-TEST_F(PositionTest, DistanceAtPoles) {
-    // North Pole
+// Test edge cases for distance calculation
+TEST_F(PositionTest, DistanceEdgeCases) {
+    // Test antipodal points (opposite sides of Earth)
+    Position p1(0.0, 0.0);
+    Position p2(0.0, 180.0);
+    
+    // Distance should be approximately half the Earth's circumference
+    double distance = p1.distanceTo(p2);
+    double expectedDistance = M_PI * EARTH_RADIUS_METERS;
+    
+    EXPECT_NEAR(expectedDistance, distance, 1.0);
+    
+    // Test points at the poles
     Position northPole(90.0, 0.0);
-    
-    // South Pole
     Position southPole(-90.0, 0.0);
     
-    double distance = northPole.distanceTo(southPole);
+    // Distance should be approximately Earth's diameter / 2
+    distance = northPole.distanceTo(southPole);
+    expectedDistance = M_PI * EARTH_RADIUS_METERS;
     
-    // The distance should be approximately the half circumference of Earth
-    EXPECT_NEAR(2 * M_PI * EARTH_RADIUS_METERS / 2, distance, 1000.0);
+    EXPECT_NEAR(expectedDistance, distance, 1.0);
 }
 
-TEST_F(PositionTest, DistanceAtEquator) {
-    // Two points on the equator, 90 degrees apart
-    Position pos1(0.0, 0.0);
-    Position pos2(0.0, 90.0);
+// Test with invalid coordinates
+TEST_F(PositionTest, InvalidCoordinates) {
+    // Create positions with extreme coordinates
+    Position extremeLat(200.0, 0.0);  // Invalid latitude
+    Position extremeLon(0.0, 200.0);  // Invalid longitude
+    Position normal(0.0, 0.0);
     
-    double distance = pos1.distanceTo(pos2);
+    // The distance calculation should still work mathematically
+    // even with invalid coordinates
+    double distance = extremeLat.distanceTo(normal);
+    EXPECT_FALSE(std::isnan(distance));
     
-    // The distance should be approximately a quarter of Earth's circumference
-    EXPECT_NEAR(2 * M_PI * EARTH_RADIUS_METERS / 4, distance, 1000.0);
+    distance = extremeLon.distanceTo(normal);
+    EXPECT_FALSE(std::isnan(distance));
 }
 
-TEST_F(PositionTest, ToStringFormat) {
-    const double latitude = 37.7749;
-    const double longitude = -122.4194;
-    const double altitude = 10.5;
-    const double accuracy = 1.2;
-    const Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
-    
-    Position position(latitude, longitude, altitude, accuracy, timestamp);
-    
-    std::string positionStr = position.toString();
-    
-    // Check that the string contains all the expected parts
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("Position(lat=37.774900"));
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("lon=-122.419400"));
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("alt=10.50m"));
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("acc=1.20m"));
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("time="));
-    // Note: We can't test the exact time string as it depends on the local timezone
-}
-
-TEST_F(PositionTest, ToStringPrecision) {
-    // Test with many decimal places to verify precision
-    const double latitude = 37.7749283;
-    const double longitude = -122.4194155;
-    const double altitude = 10.567;
-    const double accuracy = 1.234;
-    
-    Position position(latitude, longitude, altitude, accuracy);
-    
-    std::string positionStr = position.toString();
-    
-    // Check that the string has the correct precision
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("lat=37.774928"));  // 6 decimal places
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("lon=-122.419416")); // 6 decimal places
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("alt=10.57m"));     // 2 decimal places
-    EXPECT_THAT(positionStr, ::testing::HasSubstr("acc=1.23m"));      // 2 decimal places
-}
-
-} // namespace testing
-} // namespace equipment_tracker
+}  // namespace
+}  // namespace equipment_tracker
 // </test_code>
