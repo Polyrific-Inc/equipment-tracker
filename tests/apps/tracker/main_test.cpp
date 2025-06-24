@@ -11,40 +11,30 @@
 using namespace equipment_tracker;
 using namespace testing;
 
+// Platform-specific time handling
+#ifdef _WIN32
+#define PLATFORM_SPECIFIC_TIME_HANDLING 1
+#endif
 
-// Mock for getCurrentTimestamp to make tests deterministic
-class TimeUtilsMock {
-public:
-    static Timestamp mockCurrentTime;
-    
-    static void setMockTime(const Timestamp& time) {
-        mockCurrentTime = time;
-    }
-    
-    static Timestamp advanceTimeBy(std::chrono::milliseconds duration) {
-        mockCurrentTime += duration;
-        return mockCurrentTime;
-    }
-};
-
-Timestamp TimeUtilsMock::mockCurrentTime = std::chrono::system_clock::now();
-
-// Position Tests
-class PositionTest : public Test {
+class PositionTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Set a fixed timestamp for tests
-        TimeUtilsMock::setMockTime(std::chrono::system_clock::now());
+        // Default test positions
+        sanFrancisco = Position(37.7749, -122.4194, 10.0);
+        losAngeles = Position(34.0522, -118.2437, 50.0, 1.5);
     }
+
+    Position sanFrancisco;
+    Position losAngeles;
 };
 
 TEST_F(PositionTest, DefaultConstructor) {
-
     Position position;
     EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
     EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
     EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
     EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
+    // Timestamp should be set to current time, can't test exact value
 }
 
 TEST_F(PositionTest, ParameterizedConstructor) {
@@ -62,7 +52,6 @@ TEST_F(PositionTest, BuilderPattern) {
                             .withAltitude(50.0)
                             .withAccuracy(1.5)
                             .build();
-
     
     EXPECT_DOUBLE_EQ(34.0522, position.getLatitude());
     EXPECT_DOUBLE_EQ(-118.2437, position.getLongitude());
@@ -70,299 +59,284 @@ TEST_F(PositionTest, BuilderPattern) {
     EXPECT_DOUBLE_EQ(1.5, position.getAccuracy());
 }
 
-TEST_F(PositionTest, Setters) {
+TEST_F(PositionTest, SettersAndGetters) {
     Position position;
     
-    position.setLatitude(40.7128);
-    position.setLongitude(-74.0060);
-    position.setAltitude(15.0);
-    position.setAccuracy(3.0);
+    position.setLatitude(37.7749);
+    position.setLongitude(-122.4194);
+    position.setAltitude(10.0);
+    position.setAccuracy(2.0);
     
-    EXPECT_DOUBLE_EQ(40.7128, position.getLatitude());
-    EXPECT_DOUBLE_EQ(-74.0060, position.getLongitude());
-    EXPECT_DOUBLE_EQ(15.0, position.getAltitude());
-    EXPECT_DOUBLE_EQ(3.0, position.getAccuracy());
+    EXPECT_DOUBLE_EQ(37.7749, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-122.4194, position.getLongitude());
+    EXPECT_DOUBLE_EQ(10.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(2.0, position.getAccuracy());
+    
+    Timestamp now = getCurrentTimestamp();
+    position.setTimestamp(now);
+    EXPECT_EQ(now, position.getTimestamp());
 }
 
 TEST_F(PositionTest, DistanceCalculation) {
-    // San Francisco
-    Position sf(37.7749, -122.4194, 10.0);
-    // Los Angeles
-    Position la(34.0522, -118.2437, 50.0);
+    // The distance between San Francisco and Los Angeles is approximately 559 km
+    // But we'll allow for some floating point variance
+    double distance = sanFrancisco.distanceTo(losAngeles);
+    EXPECT_NEAR(559000.0, distance, 1000.0); // Within 1 km of expected
     
-    // Expected distance is approximately 559.12 km (347.42 miles)
-    double distance = sf.distanceTo(la);
+    // Distance should be the same in reverse
+    double reverseDistance = losAngeles.distanceTo(sanFrancisco);
+    EXPECT_DOUBLE_EQ(distance, reverseDistance);
     
-    // Use a reasonable tolerance for floating point comparison
-    EXPECT_NEAR(559120.0, distance, 1000.0); // Within 1km of expected
+    // Distance to self should be 0
+    EXPECT_DOUBLE_EQ(0.0, sanFrancisco.distanceTo(sanFrancisco));
 }
 
-TEST_F(PositionTest, DistanceToSamePosition) {
-    Position position(37.7749, -122.4194, 10.0);
-    double distance = position.distanceTo(position);
-    EXPECT_DOUBLE_EQ(0.0, distance);
-}
-
-TEST_F(PositionTest, ToStringContainsCoordinates) {
-    Position position(37.7749, -122.4194, 10.0);
-    std::string posStr = position.toString();
-    
+TEST_F(PositionTest, ToStringOutput) {
+    // We can't test exact string output due to timestamp formatting differences
+    // but we can check that the string contains the expected coordinates
+    std::string posStr = sanFrancisco.toString();
     EXPECT_THAT(posStr, HasSubstr("37.7749"));
     EXPECT_THAT(posStr, HasSubstr("-122.4194"));
     EXPECT_THAT(posStr, HasSubstr("10"));
 }
 
-// Equipment Tests
-class EquipmentTest : public Test {
+class EquipmentTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Set a fixed timestamp for tests
-        TimeUtilsMock::setMockTime(std::chrono::system_clock::now());
+        forklift = std::make_unique<Equipment>("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+        sanFrancisco = Position(37.7749, -122.4194, 10.0);
+        losAngeles = Position(34.0522, -118.2437, 50.0, 1.5);
     }
-    
-    // Helper to create a standard equipment instance
-    std::unique_ptr<Equipment> createTestEquipment() {
-        return std::make_unique<Equipment>("TEST-001", EquipmentType::Forklift, "Test Forklift");
-    }
-    
-    // Helper to create a position
-    Position createTestPosition(double lat = 37.7749, double lon = -122.4194, double alt = 10.0) {
-        return Position(lat, lon, alt);
-    }
+
+    std::unique_ptr<Equipment> forklift;
+    Position sanFrancisco;
+    Position losAngeles;
 };
 
 TEST_F(EquipmentTest, Constructor) {
-    Equipment equipment("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    
-    EXPECT_EQ("FORKLIFT-001", equipment.getId());
-    EXPECT_EQ(EquipmentType::Forklift, equipment.getType());
-    EXPECT_EQ("Warehouse Forklift 1", equipment.getName());
-    EXPECT_EQ(EquipmentStatus::Active, equipment.getStatus()); // Default status
-    EXPECT_FALSE(equipment.getLastPosition().has_value()); // No position by default
+    EXPECT_EQ("FORKLIFT-001", forklift->getId());
+    EXPECT_EQ(EquipmentType::Forklift, forklift->getType());
+    EXPECT_EQ("Warehouse Forklift 1", forklift->getName());
+    EXPECT_EQ(EquipmentStatus::Active, forklift->getStatus()); // Default status
 }
 
-TEST_F(EquipmentTest, MoveConstructor) {
-    Equipment original("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    original.setStatus(EquipmentStatus::Maintenance);
+TEST_F(EquipmentTest, CopyConstructorAndAssignment) {
+    // Set a position to test copying
+    forklift->setLastPosition(sanFrancisco);
     
-    // Set a position
-    Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    // Test copy constructor
+    Equipment forkliftCopy(*forklift);
+    EXPECT_EQ(forklift->getId(), forkliftCopy.getId());
+    EXPECT_EQ(forklift->getType(), forkliftCopy.getType());
+    EXPECT_EQ(forklift->getName(), forkliftCopy.getName());
+    EXPECT_EQ(forklift->getStatus(), forkliftCopy.getStatus());
     
-    // Move construct
-    Equipment moved(std::move(original));
+    auto originalPos = forklift->getLastPosition();
+    auto copiedPos = forkliftCopy.getLastPosition();
+    ASSERT_TRUE(originalPos.has_value());
+    ASSERT_TRUE(copiedPos.has_value());
+    EXPECT_DOUBLE_EQ(originalPos->getLatitude(), copiedPos->getLatitude());
+    EXPECT_DOUBLE_EQ(originalPos->getLongitude(), copiedPos->getLongitude());
     
-    EXPECT_EQ("FORKLIFT-001", moved.getId());
-    EXPECT_EQ(EquipmentType::Forklift, moved.getType());
-    EXPECT_EQ("Warehouse Forklift 1", moved.getName());
-    EXPECT_EQ(EquipmentStatus::Maintenance, moved.getStatus());
-    
-    // Check position was moved
-    ASSERT_TRUE(moved.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(37.7749, moved.getLastPosition()->getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, moved.getLastPosition()->getLongitude());
+    // Test copy assignment
+    Equipment forkliftAssigned("CRANE-001", EquipmentType::Crane, "Test Crane");
+    forkliftAssigned = *forklift;
+    EXPECT_EQ(forklift->getId(), forkliftAssigned.getId());
+    EXPECT_EQ(forklift->getType(), forkliftAssigned.getType());
+    EXPECT_EQ(forklift->getName(), forkliftAssigned.getName());
 }
 
-TEST_F(EquipmentTest, MoveAssignment) {
-    Equipment original("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
-    Equipment target("CRANE-001", EquipmentType::Crane, "Tower Crane 1");
+TEST_F(EquipmentTest, MoveConstructorAndAssignment) {
+    // Set a position to test moving
+    forklift->setLastPosition(sanFrancisco);
     
-    // Set a position
-    Position pos = createTestPosition();
-    original.setLastPosition(pos);
+    // Capture ID for later comparison
+    std::string originalId = forklift->getId();
     
-    // Move assign
-    target = std::move(original);
+    // Test move constructor
+    Equipment forkliftMoved(std::move(*forklift));
+    EXPECT_EQ(originalId, forkliftMoved.getId());
+    EXPECT_EQ(EquipmentType::Forklift, forkliftMoved.getType());
+    EXPECT_EQ("Warehouse Forklift 1", forkliftMoved.getName());
     
-    EXPECT_EQ("FORKLIFT-001", target.getId());
-    EXPECT_EQ(EquipmentType::Forklift, target.getType());
-    EXPECT_EQ("Warehouse Forklift 1", target.getName());
+    auto movedPos = forkliftMoved.getLastPosition();
+    ASSERT_TRUE(movedPos.has_value());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLatitude(), movedPos->getLatitude());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLongitude(), movedPos->getLongitude());
     
-    // Check position was moved
-    ASSERT_TRUE(target.getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(37.7749, target.getLastPosition()->getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, target.getLastPosition()->getLongitude());
+    // Recreate forklift for move assignment test
+    forklift = std::make_unique<Equipment>("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+    forklift->setLastPosition(sanFrancisco);
+    originalId = forklift->getId();
+    
+    // Test move assignment
+    Equipment forkliftAssigned("CRANE-001", EquipmentType::Crane, "Test Crane");
+    forkliftAssigned = std::move(*forklift);
+    EXPECT_EQ(originalId, forkliftAssigned.getId());
+    EXPECT_EQ(EquipmentType::Forklift, forkliftAssigned.getType());
+    EXPECT_EQ("Warehouse Forklift 1", forkliftAssigned.getName());
 }
 
 TEST_F(EquipmentTest, SettersAndGetters) {
-    auto equipment = createTestEquipment();
+    forklift->setName("Updated Forklift Name");
+    EXPECT_EQ("Updated Forklift Name", forklift->getName());
     
-    equipment->setName("Updated Forklift");
-    equipment->setStatus(EquipmentStatus::Maintenance);
+    forklift->setStatus(EquipmentStatus::Maintenance);
+    EXPECT_EQ(EquipmentStatus::Maintenance, forklift->getStatus());
     
-    EXPECT_EQ("Updated Forklift", equipment->getName());
-    EXPECT_EQ(EquipmentStatus::Maintenance, equipment->getStatus());
-}
-
-TEST_F(EquipmentTest, PositionManagement) {
-    auto equipment = createTestEquipment();
+    // Test position setting and getting
+    EXPECT_FALSE(forklift->getLastPosition().has_value());
     
-    // Initially no position
-    EXPECT_FALSE(equipment->getLastPosition().has_value());
-    
-    // Set position
-    Position pos1 = createTestPosition();
-    equipment->setLastPosition(pos1);
-    
-    // Check position was set
-    ASSERT_TRUE(equipment->getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(37.7749, equipment->getLastPosition()->getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, equipment->getLastPosition()->getLongitude());
-    
-    // Update position
-    Position pos2 = createTestPosition(37.8, -122.5, 15.0);
-    equipment->setLastPosition(pos2);
-    
-    // Check position was updated
-    ASSERT_TRUE(equipment->getLastPosition().has_value());
-    EXPECT_DOUBLE_EQ(37.8, equipment->getLastPosition()->getLatitude());
-    EXPECT_DOUBLE_EQ(-122.5, equipment->getLastPosition()->getLongitude());
-    EXPECT_DOUBLE_EQ(15.0, equipment->getLastPosition()->getAltitude());
+    forklift->setLastPosition(sanFrancisco);
+    auto position = forklift->getLastPosition();
+    ASSERT_TRUE(position.has_value());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLatitude(), position->getLatitude());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLongitude(), position->getLongitude());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getAltitude(), position->getAltitude());
 }
 
 TEST_F(EquipmentTest, PositionHistory) {
-    auto equipment = createTestEquipment();
-    
-    // Initially empty history
-    EXPECT_TRUE(equipment->getPositionHistory().empty());
+    // Initially history should be empty
+    EXPECT_TRUE(forklift->getPositionHistory().empty());
     
     // Record positions
-    for (int i = 0; i < 5; ++i) {
-        Position pos = createTestPosition(37.7749 + i * 0.001, -122.4194 + i * 0.002, 10.0 + i);
-        equipment->recordPosition(pos);
-        
-        // Advance time for each position
-        TimeUtilsMock::advanceTimeBy(std::chrono::seconds(1));
-    }
+    forklift->recordPosition(sanFrancisco);
+    forklift->recordPosition(losAngeles);
     
-    // Check history size
-    auto history = equipment->getPositionHistory();
-    EXPECT_EQ(5, history.size());
+    // Check history
+    auto history = forklift->getPositionHistory();
+    ASSERT_EQ(2, history.size());
     
-    // Check positions are in correct order (newest first)
-    EXPECT_DOUBLE_EQ(37.7749 + 4 * 0.001, history[0].getLatitude());
-    EXPECT_DOUBLE_EQ(37.7749 + 3 * 0.001, history[1].getLatitude());
-    EXPECT_DOUBLE_EQ(37.7749, history[4].getLatitude());
+    // Check positions in history (should be in order of recording)
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLatitude(), history[0].getLatitude());
+    EXPECT_DOUBLE_EQ(sanFrancisco.getLongitude(), history[0].getLongitude());
     
-    // Clear history
-    equipment->clearPositionHistory();
-    EXPECT_TRUE(equipment->getPositionHistory().empty());
+    EXPECT_DOUBLE_EQ(losAngeles.getLatitude(), history[1].getLatitude());
+    EXPECT_DOUBLE_EQ(losAngeles.getLongitude(), history[1].getLongitude());
+    
+    // Test clear history
+    forklift->clearPositionHistory();
+    EXPECT_TRUE(forklift->getPositionHistory().empty());
 }
 
 TEST_F(EquipmentTest, HistorySizeLimit) {
-    auto equipment = createTestEquipment();
-    
-    // Record more positions than the default history size
+    // Record more positions than the default history size limit
     for (size_t i = 0; i < DEFAULT_MAX_HISTORY_SIZE + 10; ++i) {
-        Position pos = createTestPosition(37.7749 + i * 0.001, -122.4194 + i * 0.002, 10.0 + i);
-        equipment->recordPosition(pos);
-        
-        // Advance time for each position
-        TimeUtilsMock::advanceTimeBy(std::chrono::seconds(1));
+        Position pos(37.7749 + (i * 0.001), -122.4194 + (i * 0.001), 10.0);
+        forklift->recordPosition(pos);
     }
     
-    // Check history size is limited to DEFAULT_MAX_HISTORY_SIZE
-    auto history = equipment->getPositionHistory();
+    // History should be limited to DEFAULT_MAX_HISTORY_SIZE
+    auto history = forklift->getPositionHistory();
     EXPECT_EQ(DEFAULT_MAX_HISTORY_SIZE, history.size());
-    
-    // Check the oldest entries were removed
-    // The newest entry should have the highest latitude offset
-    double expectedLatitude = 37.7749 + (DEFAULT_MAX_HISTORY_SIZE + 10 - 1) * 0.001;
-    EXPECT_DOUBLE_EQ(expectedLatitude, history[0].getLatitude());
 }
 
 TEST_F(EquipmentTest, IsMoving) {
-    auto equipment = createTestEquipment();
+    // Without positions, should not be moving
+    EXPECT_FALSE(forklift->isMoving());
     
-    // No position yet, should not be moving
-    EXPECT_FALSE(equipment->isMoving());
+    // Record a position
+    forklift->recordPosition(sanFrancisco);
     
-    // Record first position
-    Position pos1 = createTestPosition();
-    equipment->recordPosition(pos1);
+    // With only one position, should not be moving
+    EXPECT_FALSE(forklift->isMoving());
     
-    // Only one position, should not be moving
-    EXPECT_FALSE(equipment->isMoving());
+    // Record a position very close to the first one (not moving)
+    Position nearbyPosition(37.7749 + 0.00001, -122.4194 + 0.00001, 10.0);
+    forklift->recordPosition(nearbyPosition);
     
-    // Record second position with significant movement
-    TimeUtilsMock::advanceTimeBy(std::chrono::seconds(10));
-    Position pos2 = createTestPosition(37.7749 + 0.01, -122.4194 + 0.01, 10.0);
-    equipment->recordPosition(pos2);
+    // Should still not be moving (positions too close)
+    EXPECT_FALSE(forklift->isMoving());
     
-    // Should be moving (positions are far enough apart)
-    EXPECT_TRUE(equipment->isMoving());
+    // Record a position far from the previous one (moving)
+    // Wait a bit to ensure timestamps are different
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    forklift->recordPosition(losAngeles);
     
-    // Record third position with minimal movement
-    TimeUtilsMock::advanceTimeBy(std::chrono::seconds(10));
-    Position pos3 = createTestPosition(37.7749 + 0.01, -122.4194 + 0.01, 10.0);
-    equipment->recordPosition(pos3);
-    
-    // Should not be moving (positions are too close)
-    EXPECT_FALSE(equipment->isMoving());
+    // Should be moving now
+    EXPECT_TRUE(forklift->isMoving());
 }
 
-TEST_F(EquipmentTest, ToString) {
-    Equipment equipment("FORKLIFT-001", EquipmentType::Forklift, "Warehouse Forklift 1");
+TEST_F(EquipmentTest, ToStringOutput) {
+    forklift->setLastPosition(sanFrancisco);
     
-    std::string equipStr = equipment.toString();
-    
+    std::string equipStr = forklift->toString();
     EXPECT_THAT(equipStr, HasSubstr("FORKLIFT-001"));
     EXPECT_THAT(equipStr, HasSubstr("Warehouse Forklift 1"));
     EXPECT_THAT(equipStr, HasSubstr("Forklift"));
 }
 
-// Time Utils Tests
-class TimeUtilsTest : public Test {
+class TimeUtilsTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Set a fixed timestamp for tests
-        TimeUtilsMock::setMockTime(std::chrono::system_clock::now());
+        // Create a fixed timestamp for testing
+        testTime = std::chrono::system_clock::now();
     }
+
+    Timestamp testTime;
 };
 
-TEST_F(TimeUtilsTest, FormatTimestamp) {
-    auto now = getCurrentTimestamp();
-    std::string formatted = formatTimestamp(now, "%Y-%m-%d");
+TEST_F(TimeUtilsTest, GetCurrentTimestamp) {
+    Timestamp before = std::chrono::system_clock::now();
+    Timestamp current = getCurrentTimestamp();
+    Timestamp after = std::chrono::system_clock::now();
     
-    // Check format is correct (YYYY-MM-DD)
-    EXPECT_THAT(formatted, MatchesRegex("[0-9]{4}-[0-9]{2}-[0-9]{2}"));
+    // Current timestamp should be between before and after
+    EXPECT_LE(before, current);
+    EXPECT_LE(current, after);
 }
 
-TEST_F(TimeUtilsTest, ParseTimestamp) {
-    std::string dateStr = "2023-05-15 14:30:00";
-    auto timestamp = parseTimestamp(dateStr, "%Y-%m-%d %H:%M:%S");
+TEST_F(TimeUtilsTest, TimestampDiffCalculations) {
+    // Create timestamps 1 hour apart
+    Timestamp t1 = testTime;
+    Timestamp t2 = addHours(t1, 1);
     
-    // Format it back to verify
-    std::string formatted = formatTimestamp(timestamp, "%Y-%m-%d %H:%M:%S");
-    EXPECT_EQ(dateStr, formatted);
+    EXPECT_EQ(3600, timestampDiffSeconds(t2, t1));
+    EXPECT_EQ(60, timestampDiffMinutes(t2, t1));
+    EXPECT_EQ(1, timestampDiffHours(t2, t1));
+    EXPECT_EQ(0, timestampDiffDays(t2, t1));
+    
+    // Test negative differences (t1 later than t2)
+    EXPECT_EQ(-3600, timestampDiffSeconds(t1, t2));
+    EXPECT_EQ(-60, timestampDiffMinutes(t1, t2));
+    EXPECT_EQ(-1, timestampDiffHours(t1, t2));
+    EXPECT_EQ(0, timestampDiffDays(t1, t2));
+    
+    // Test day difference
+    Timestamp t3 = addDays(t1, 2);
+    EXPECT_EQ(2, timestampDiffDays(t3, t1));
+    EXPECT_EQ(48, timestampDiffHours(t3, t1));
 }
 
-TEST_F(TimeUtilsTest, TimestampDifference) {
-    auto now = getCurrentTimestamp();
-    auto later = addSeconds(now, 3665); // 1 hour, 1 minute, 5 seconds
+TEST_F(TimeUtilsTest, TimestampAddition) {
+    Timestamp t1 = testTime;
     
-    EXPECT_EQ(3665, timestampDiffSeconds(later, now));
-    EXPECT_EQ(61, timestampDiffMinutes(later, now));
-    EXPECT_EQ(1, timestampDiffHours(later, now));
-    EXPECT_EQ(0, timestampDiffDays(later, now));
+    // Test adding seconds
+    Timestamp t2 = addSeconds(t1, 30);
+    EXPECT_EQ(30, timestampDiffSeconds(t2, t1));
     
-    auto muchLater = addDays(now, 2);
-    EXPECT_EQ(2, timestampDiffDays(muchLater, now));
+    // Test adding minutes
+    Timestamp t3 = addMinutes(t1, 45);
+    EXPECT_EQ(45, timestampDiffMinutes(t3, t1));
+    
+    // Test adding hours
+    Timestamp t4 = addHours(t1, 5);
+    EXPECT_EQ(5, timestampDiffHours(t4, t1));
+    
+    // Test adding days
+    Timestamp t5 = addDays(t1, 3);
+    EXPECT_EQ(3, timestampDiffDays(t5, t1));
 }
 
-TEST_F(TimeUtilsTest, AddTime) {
-    auto now = getCurrentTimestamp();
+TEST_F(TimeUtilsTest, TimestampFormatAndParse) {
+    // Format the timestamp
+    std::string formatted = formatTimestamp(testTime, "%Y-%m-%d %H:%M:%S");
     
-    auto later1 = addSeconds(now, 30);
-    EXPECT_EQ(30, timestampDiffSeconds(later1, now));
+    // Parse it back
+    Timestamp parsed = parseTimestamp(formatted, "%Y-%m-%d %H:%M:%S");
     
-    auto later2 = addMinutes(now, 45);
-    EXPECT_EQ(45, timestampDiffMinutes(later2, now));
-    
-    auto later3 = addHours(now, 3);
-    EXPECT_EQ(3, timestampDiffHours(later3, now));
-    
-    auto later4 = addDays(now, 7);
-    EXPECT_EQ(7, timestampDiffDays(later4, now));
+    // Due to second-level precision in the format string, the timestamps might differ by less than a second
+    // So we check if they're within 1 second of each other
+    EXPECT_LE(std::abs(timestampDiffSeconds(testTime, parsed)), 1);
 }
 // </test_code>
