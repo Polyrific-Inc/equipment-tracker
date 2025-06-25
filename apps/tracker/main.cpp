@@ -96,24 +96,13 @@ bool parsePosition(const std::string &str, double &lat, double &lon, double &alt
 
 int main(int argc, char *argv[])
 {
-    // Validate argc to prevent potential issues
-    if (argc < 0) {
-        std::cerr << "Error: Invalid argument count" << std::endl;
-        return 1;
-    }
-    
     // Default positions
     double pos1Lat = 37.7749, pos1Lon = -122.4194, pos1Alt = 10.0;
     double pos2Lat = 34.0522, pos2Lon = -118.2437, pos2Alt = 50.0;
 
-    // Parse command-line arguments with improved bounds checking
+    // Parse command-line arguments
     for (int i = 1; i < argc; i++)
     {
-        if (argv[i] == nullptr) {
-            std::cerr << "Error: Null argument encountered" << std::endl;
-            return 1;
-        }
-        
         std::string arg = argv[i];
 
         if (arg == "--help")
@@ -122,7 +111,7 @@ int main(int argc, char *argv[])
             return 0;
         }
         else if (arg == "--pos1") {
-            if (i + 1 >= argc || argv[i + 1] == nullptr) {
+            if (i + 1 >= argc) {
                 std::cerr << "Error: --pos1 requires a position argument" << std::endl;
                 printUsage(argv[0]);
                 return 1;
@@ -135,7 +124,7 @@ int main(int argc, char *argv[])
             i++;
         }
         else if (arg == "--pos2") {
-            if (i + 1 >= argc || argv[i + 1] == nullptr) {
+            if (i + 1 >= argc) {
                 std::cerr << "Error: --pos2 requires a position argument" << std::endl;
                 printUsage(argv[0]);
                 return 1;
