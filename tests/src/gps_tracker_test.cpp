@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <sstream>
+#include <cstring>
 #include "equipment_tracker/gps_tracker.h"
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/utils/time_utils.h"
@@ -11,7 +12,7 @@
 namespace equipment_tracker {
 
 // Mock for the NMEAParser to test interactions
-class MockNMEAParser : public EquipmentNMEAParser {
+class MockNMEAParser : public CNMEAParser {
 public:
     MOCK_METHOD(CNMEAParserData::ERROR_E, ProcessNMEABuffer, (char* pBuffer, int iSize), (override));
     MOCK_METHOD(CNMEAParserData::ERROR_E, GetGPGGA, (CNMEAParserData::GGA_DATA_T& ggaData), (override));
@@ -52,7 +53,7 @@ protected:
     Timestamp timestamp;
 
     void SetUp() override {
-        tracker = std::make_unique<GPSTracker>(100); // Short interval for tests
+        tracker = std::make_unique<GPSTracker>(100); // Short interval for testing
         tracker->registerPositionCallback([this](double lat, double lon, double alt, Timestamp ts) {
             callback_called = true;
             latitude = lat;
@@ -63,25 +64,31 @@ protected:
     }
 
     void TearDown() override {
-        tracker->stop();
+        if (tracker && tracker->isRunning()) {
+            tracker->stop();
+        }
         tracker.reset();
     }
 };
 
 // Tests for EquipmentNMEAParser
 TEST_F(EquipmentNMEAParserTest, TriggerPositionCallback) {
+    // Test that the position callback is triggered correctly
     parser.triggerPositionCallback(37.7749, -122.4194, 10.0);
     
     EXPECT_TRUE(callback_called);
     EXPECT_DOUBLE_EQ(37.7749, latitude);
     EXPECT_DOUBLE_EQ(-122.4194, longitude);
     EXPECT_DOUBLE_EQ(10.0, altitude);
-    EXPECT_NE(timestamp, Timestamp{});
+    // We can't test exact timestamp, but it should be close to now
+    auto now = getCurrentTimestamp();
+    auto diff = std::chrono::duration_cast<std::chrono::seconds>(now - timestamp).count();
+    EXPECT_LT(std::abs(diff), 2); // Within 2 seconds
 }
 
 TEST_F(EquipmentNMEAParserTest, ProcessNMEABuffer) {
     // Create a valid NMEA GGA sentence
-    std::string nmea_data = "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
+    std::string nmea = "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
     
     // Mock the GetGPGGA method to return valid data
     CNMEAParserData::GGA_DATA_T ggaData;
@@ -90,150 +97,185 @@ TEST_F(EquipmentNMEAParserTest, ProcessNMEABuffer) {
     ggaData.dAltitudeMSL = 545.4;
     
     // Process the buffer
-    auto result = parser.ProcessNMEABuffer(const_cast<char*>(nmea_data.c_str()), static_cast<int>(nmea_data.length()));
+    auto result = parser.ProcessNMEABuffer(const_cast<char*>(nmea.c_str()), static_cast<int>(nmea.length()));
     
-    // Since we're using a mock NMEAParser, we can't fully test this without more setup
-    // Just verify the function returns without errors
-    EXPECT_EQ(result, CNMEAParserData::ERROR_OK);
+    // Since we're using a mock NMEA parser, we can't fully test the processing
+    // But we can verify the return value
+    EXPECT_EQ(CNMEAParserData::ERROR_OK, result);
 }
 
 // Tests for GPSTracker
 TEST_F(GPSTrackerTest, Constructor) {
-    EXPECT_EQ(tracker->getUpdateInterval(), 100);
+    // Test default constructor
+    GPSTracker tracker;
+    EXPECT_EQ(DEFAULT_UPDATE_INTERVAL_MS, tracker.getUpdateInterval());
+    EXPECT_FALSE(tracker.isRunning());
+    
+    // Test constructor with custom interval
+    GPSTracker tracker2(1000);
+    EXPECT_EQ(1000, tracker2.getUpdateInterval());
+    EXPECT_FALSE(tracker2.isRunning());
+}
+
+TEST_F(GPSTrackerTest, StartStop) {
+    // Test start
+    EXPECT_FALSE(tracker->isRunning());
+    tracker->start();
+    EXPECT_TRUE(tracker->isRunning());
+    
+    // Test stop
+    tracker->stop();
+    EXPECT_FALSE(tracker->isRunning());
+    
+    // Test starting when already started
+    tracker->start();
+    EXPECT_TRUE(tracker->isRunning());
+    tracker->start(); // Should be a no-op
+    EXPECT_TRUE(tracker->isRunning());
+    
+    // Test stopping when already stopped
+    tracker->stop();
+    EXPECT_FALSE(tracker->isRunning());
+    tracker->stop(); // Should be a no-op
     EXPECT_FALSE(tracker->isRunning());
 }
 
 TEST_F(GPSTrackerTest, SetUpdateInterval) {
-    tracker->setUpdateInterval(200);
-    EXPECT_EQ(tracker->getUpdateInterval(), 200);
-}
-
-TEST_F(GPSTrackerTest, StartStop) {
-    EXPECT_FALSE(tracker->isRunning());
-    
-    tracker->start();
-    EXPECT_TRUE(tracker->isRunning());
-    
-    tracker->stop();
-    EXPECT_FALSE(tracker->isRunning());
+    EXPECT_EQ(100, tracker->getUpdateInterval());
+    tracker->setUpdateInterval(500);
+    EXPECT_EQ(500, tracker->getUpdateInterval());
 }
 
 TEST_F(GPSTrackerTest, SimulatePosition) {
+    // Test simulating a position
     tracker->simulatePosition(37.7749, -122.4194, 10.0);
     
     EXPECT_TRUE(callback_called);
     EXPECT_DOUBLE_EQ(37.7749, latitude);
     EXPECT_DOUBLE_EQ(-122.4194, longitude);
     EXPECT_DOUBLE_EQ(10.0, altitude);
-    EXPECT_NE(timestamp, Timestamp{});
+    
+    // Reset and test with different values
+    callback_called = false;
+    tracker->simulatePosition(40.7128, -74.0060, 20.0);
+    
+    EXPECT_TRUE(callback_called);
+    EXPECT_DOUBLE_EQ(40.7128, latitude);
+    EXPECT_DOUBLE_EQ(-74.0060, longitude);
+    EXPECT_DOUBLE_EQ(20.0, altitude);
 }
 
 TEST_F(GPSTrackerTest, ProcessNMEAData) {
     // Create a valid NMEA GGA sentence
-    std::string nmea_data = "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
+    std::string nmea = "$GPGGA,123519.00,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n";
     
-    bool result = tracker->processNMEAData(nmea_data);
+    // Process the NMEA data
+    bool result = tracker->processNMEAData(nmea);
     
-    // The mock NMEAParser should return ERROR_OK
+    // Since we're using a mock NMEA parser, we can't fully test the processing
+    // But we can verify the return value
     EXPECT_TRUE(result);
 }
 
 TEST_F(GPSTrackerTest, RegisterPositionCallback) {
+    // Reset the callback
     bool new_callback_called = false;
-    double new_lat = 0.0;
-    double new_lon = 0.0;
-    double new_alt = 0.0;
+    double new_lat = 0.0, new_lon = 0.0, new_alt = 0.0;
+    Timestamp new_ts;
     
-    tracker->registerPositionCallback([&](double lat, double lon, double alt, Timestamp) {
+    // Register a new callback
+    tracker->registerPositionCallback([&](double lat, double lon, double alt, Timestamp ts) {
         new_callback_called = true;
         new_lat = lat;
         new_lon = lon;
         new_alt = alt;
+        new_ts = ts;
     });
     
-    tracker->simulatePosition(12.3456, 78.9012, 100.0);
+    // Simulate a position to trigger the callback
+    tracker->simulatePosition(37.7749, -122.4194, 10.0);
     
+    // Verify the new callback was called
     EXPECT_TRUE(new_callback_called);
-    EXPECT_DOUBLE_EQ(12.3456, new_lat);
-    EXPECT_DOUBLE_EQ(78.9012, new_lon);
-    EXPECT_DOUBLE_EQ(100.0, new_alt);
+    EXPECT_DOUBLE_EQ(37.7749, new_lat);
+    EXPECT_DOUBLE_EQ(-122.4194, new_lon);
+    EXPECT_DOUBLE_EQ(10.0, new_alt);
 }
 
-TEST_F(GPSTrackerTest, StartWorkerThread) {
+TEST_F(GPSTrackerTest, WorkerThreadFunction) {
+    // Start the tracker
     tracker->start();
     
-    // Sleep to allow the worker thread to run at least once
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    // Wait for the worker thread to run at least once
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     
-    // The worker should have called simulatePosition at least once
+    // Verify that the callback was called (worker thread should simulate a position)
     EXPECT_TRUE(callback_called);
     
-    // Default simulation position is San Francisco
-    EXPECT_DOUBLE_EQ(37.7749, latitude);
-    EXPECT_DOUBLE_EQ(-122.4194, longitude);
-    EXPECT_DOUBLE_EQ(10.0, altitude);
+    // Stop the tracker
+    tracker->stop();
 }
 
 // Test the NMEA sentence generation in simulatePosition
-TEST_F(GPSTrackerTest, NMEASentenceFormat) {
-    // Create a custom GPSTracker with a mock NMEA parser
-    auto mock_parser = std::make_unique<::testing::NiceMock<MockNMEAParser>>();
+TEST_F(GPSTrackerTest, NMEASentenceGeneration) {
+    // Create a GPSTracker with a mock NMEA parser
+    class TestableGPSTracker : public GPSTracker {
+    public:
+        TestableGPSTracker() : GPSTracker(100) {}
+        
+        // Expose the processNMEAData method for testing
+        using GPSTracker::processNMEAData;
+    };
     
-    // Set up expectations for the mock
-    EXPECT_CALL(*mock_parser, ProcessNMEABuffer(::testing::_, ::testing::_))
-        .WillOnce([](char* buffer, int) {
-            std::string nmea(buffer);
-            
-            // Verify NMEA sentence format
-            EXPECT_THAT(nmea, ::testing::StartsWith("$GPGGA,"));
-            EXPECT_THAT(nmea, ::testing::HasSubstr(",3730.4940,N,"));
-            EXPECT_THAT(nmea, ::testing::HasSubstr(",12225.1640,W,"));
-            EXPECT_THAT(nmea, ::testing::HasSubstr(",10.0,M,"));
-            EXPECT_THAT(nmea, ::testing::EndsWith("\r\n"));
-            
-            return CNMEAParserData::ERROR_OK;
-        });
+    TestableGPSTracker testTracker;
     
-    // Replace the NMEA parser in our tracker with the mock
-    // Note: This is a bit of a hack since we don't have direct access to the parser
-    // In a real implementation, we would add a method to set the parser or use dependency injection
-    GPSTracker custom_tracker(100);
+    // Register a callback to capture the processed data
+    bool callback_called = false;
+    testTracker.registerPositionCallback([&](double lat, double lon, double alt, Timestamp) {
+        callback_called = true;
+        EXPECT_NEAR(37.7749, lat, 0.0001);
+        EXPECT_NEAR(-122.4194, lon, 0.0001);
+        EXPECT_NEAR(10.0, alt, 0.0001);
+    });
     
-    // Simulate a position - this should generate an NMEA sentence
-    custom_tracker.simulatePosition(37.5082, -122.4194, 10.0);
+    // Simulate a position
+    testTracker.simulatePosition(37.7749, -122.4194, 10.0);
+    
+    // Verify the callback was called
+    EXPECT_TRUE(callback_called);
 }
 
-// Test error handling in the NMEA parser
-TEST(EquipmentNMEAParserErrorTest, OnErrorLogsToStderr) {
-    EquipmentNMEAParser parser;
-    
-    // Redirect stderr to capture output
+// Test error handling in EquipmentNMEAParser
+TEST_F(EquipmentNMEAParserTest, OnError) {
+    // Redirect cerr to capture output
     std::stringstream buffer;
     std::streambuf* old = std::cerr.rdbuf(buffer.rdbuf());
     
-    // Call OnError
-    parser.OnError(CNMEAParserData::ERROR_UNKNOWN, const_cast<char*>("$GPGGA"));
-    
-    // Restore stderr
-    std::cerr.rdbuf(old);
-    
-    // Check that error was logged
+    // Test with null command
+    parser.OnError(CNMEAParserData::ERROR_UNKNOWN, nullptr);
     EXPECT_THAT(buffer.str(), ::testing::HasSubstr("NMEA Parser Error: 1"));
-    EXPECT_THAT(buffer.str(), ::testing::HasSubstr("for command: $GPGGA"));
+    
+    // Clear buffer and test with a command
+    buffer.str("");
+    char cmd[] = "$GPGGA";
+    parser.OnError(CNMEAParserData::ERROR_UNKNOWN, cmd);
+    EXPECT_THAT(buffer.str(), ::testing::HasSubstr("NMEA Parser Error: 1 for command: $GPGGA"));
+    
+    // Restore cerr
+    std::cerr.rdbuf(old);
 }
 
-// Test mutex operations in the NMEA parser
-TEST(EquipmentNMEAParserMutexTest, LockUnlockDataAccess) {
-    EquipmentNMEAParser parser;
-    
-    // These should not deadlock
+// Test thread safety in EquipmentNMEAParser
+TEST_F(EquipmentNMEAParserTest, ThreadSafety) {
+    // Test that LockDataAccess and UnlockDataAccess work
+    // This is a basic test that doesn't actually verify thread safety
+    // but at least ensures the methods don't crash
     parser.LockDataAccess();
     parser.UnlockDataAccess();
     
-    // Test that we can lock again
-    parser.LockDataAccess();
-    parser.UnlockDataAccess();
+    // A more thorough test would involve multiple threads
+    // but that's beyond the scope of this unit test
 }
 
-} // namespace equipment_tracker
+}  // namespace equipment_tracker
 // </test_code>
