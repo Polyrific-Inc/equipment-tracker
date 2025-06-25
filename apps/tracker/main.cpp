@@ -3,6 +3,7 @@
 #include <chrono>
 #include <thread>
 #include <string>
+#include <cmath>
 #include "equipment_tracker/position.h"
 #include "equipment_tracker/equipment.h"
 #include "equipment_tracker/utils/time_utils.h"
@@ -29,40 +30,47 @@ bool parsePosition(const std::string &str, double &lat, double &lon, double &alt
         return false;
     }
     
-    size_t first_comma = str.find(',');
-    size_t second_comma = str.find(',', first_comma + 1);
+    size_t firstComma = str.find(',');
+    size_t secondComma = str.find(',', firstComma + 1);
 
     // Check if we have exactly two commas
-    if (first_comma == std::string::npos || second_comma == std::string::npos) {
+    if (firstComma == std::string::npos || secondComma == std::string::npos) {
         return false;
     }
     
     // Check for additional commas (should have exactly 2)
-    if (str.find(',', second_comma + 1) != std::string::npos) {
+    if (str.find(',', secondComma + 1) != std::string::npos) {
         return false;
     }
     
     // Validate segment lengths (no empty segments)
-    if (first_comma == 0 || 
-        second_comma == first_comma + 1 || 
-        second_comma == str.length() - 1) {
+    if (firstComma == 0 || 
+        secondComma == firstComma + 1 || 
+        secondComma == str.length() - 1) {
         return false;
     }
 
     try {
         // Extract and validate each component
-        std::string lat_str = str.substr(0, first_comma);
-        std::string lon_str = str.substr(first_comma + 1, second_comma - first_comma - 1);
-        std::string alt_str = str.substr(second_comma + 1);
+        std::string latStr = str.substr(0, firstComma);
+        std::string lonStr = str.substr(firstComma + 1, secondComma - firstComma - 1);
+        std::string altStr = str.substr(secondComma + 1);
         
-        // Check for empty strings after trimming whitespace
-        if (lat_str.empty() || lon_str.empty() || alt_str.empty()) {
+        // Check for empty strings after extraction
+        if (latStr.empty() || lonStr.empty() || altStr.empty()) {
             return false;
         }
         
-        lat = std::stod(lat_str);
-        lon = std::stod(lon_str);
-        alt = std::stod(alt_str);
+        // Parse values with size_t to detect partial conversions
+        size_t latPos = 0, lonPos = 0, altPos = 0;
+        lat = std::stod(latStr, &latPos);
+        lon = std::stod(lonStr, &lonPos);
+        alt = std::stod(altStr, &altPos);
+        
+        // Ensure entire strings were consumed (no trailing invalid characters)
+        if (latPos != latStr.length() || lonPos != lonStr.length() || altPos != altStr.length()) {
+            return false;
+        }
         
         // Validate latitude (-90 to 90)
         if (lat < -90.0 || lat > 90.0 || !std::isfinite(lat)) {
@@ -81,20 +89,31 @@ bool parsePosition(const std::string &str, double &lat, double &lon, double &alt
             
         return true;
     }
-    catch (const std::exception &e) {
+    catch (const std::exception &) {
         return false;
     }
 }
 
 int main(int argc, char *argv[])
 {
+    // Validate argc to prevent potential issues
+    if (argc < 0) {
+        std::cerr << "Error: Invalid argument count" << std::endl;
+        return 1;
+    }
+    
     // Default positions
-    double pos1_lat = 37.7749, pos1_lon = -122.4194, pos1_alt = 10.0;
-    double pos2_lat = 34.0522, pos2_lon = -118.2437, pos2_alt = 50.0;
+    double pos1Lat = 37.7749, pos1Lon = -122.4194, pos1Alt = 10.0;
+    double pos2Lat = 34.0522, pos2Lon = -118.2437, pos2Alt = 50.0;
 
-    // Parse command-line arguments
+    // Parse command-line arguments with improved bounds checking
     for (int i = 1; i < argc; i++)
     {
+        if (argv[i] == nullptr) {
+            std::cerr << "Error: Null argument encountered" << std::endl;
+            return 1;
+        }
+        
         std::string arg = argv[i];
 
         if (arg == "--help")
@@ -103,12 +122,12 @@ int main(int argc, char *argv[])
             return 0;
         }
         else if (arg == "--pos1") {
-            if (i + 1 >= argc) {
+            if (i + 1 >= argc || argv[i + 1] == nullptr) {
                 std::cerr << "Error: --pos1 requires a position argument" << std::endl;
                 printUsage(argv[0]);
                 return 1;
             }
-            if (!parsePosition(argv[i + 1], pos1_lat, pos1_lon, pos1_alt)) {
+            if (!parsePosition(argv[i + 1], pos1Lat, pos1Lon, pos1Alt)) {
                 std::cerr << "Error: Invalid position format for --pos1. Expected format: lat,lon,alt" << std::endl;
                 printUsage(argv[0]);
                 return 1;
@@ -116,12 +135,12 @@ int main(int argc, char *argv[])
             i++;
         }
         else if (arg == "--pos2") {
-            if (i + 1 >= argc) {
+            if (i + 1 >= argc || argv[i + 1] == nullptr) {
                 std::cerr << "Error: --pos2 requires a position argument" << std::endl;
                 printUsage(argv[0]);
                 return 1;
             }
-            if (!parsePosition(argv[i + 1], pos2_lat, pos2_lon, pos2_alt)) {
+            if (!parsePosition(argv[i + 1], pos2Lat, pos2Lon, pos2Alt)) {
                 std::cerr << "Error: Invalid position format for --pos2. Expected format: lat,lon,alt" << std::endl;
                 printUsage(argv[0]);
                 return 1;
@@ -140,13 +159,13 @@ int main(int argc, char *argv[])
     std::cout << "===================================" << std::endl;
 
     // Create a position using regular constructor
-    Position position1(pos1_lat, pos1_lon, pos1_alt);
+    Position position1(pos1Lat, pos1Lon, pos1Alt);
 
     // Create a position using builder pattern
     Position position2 = Position::builder()
-                             .withLatitude(pos2_lat)
-                             .withLongitude(pos2_lon)
-                             .withAltitude(pos2_alt)
+                             .withLatitude(pos2Lat)
+                             .withLongitude(pos2Lon)
+                             .withAltitude(pos2Alt)
                              .withAccuracy(1.5)
                              .build();
 
