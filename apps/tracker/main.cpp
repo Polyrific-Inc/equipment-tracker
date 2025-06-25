@@ -25,37 +25,63 @@ void printUsage(const char *programName)
 
 bool parsePosition(const std::string &str, double &lat, double &lon, double &alt)
 {
-    size_t first_comma = str.find(',');
-    size_t second_comma = str.find(',', first_comma + 1);
-
-    if (first_comma == std::string::npos || second_comma == std::string::npos)
-    {
+    if (str.empty()) {
         return false;
     }
     
-    // Add bounds checking before substring operations
-    if (first_comma == 0 || second_comma == 0 || first_comma >= str.length() || second_comma >= str.length()) {
+    size_t first_comma = str.find(',');
+    size_t second_comma = str.find(',', first_comma + 1);
+
+    // Check if we have exactly two commas
+    if (first_comma == std::string::npos || second_comma == std::string::npos) {
+        return false;
+    }
+    
+    // Check for additional commas (should have exactly 2)
+    if (str.find(',', second_comma + 1) != std::string::npos) {
+        return false;
+    }
+    
+    // Validate segment lengths (no empty segments)
+    if (first_comma == 0 || 
+        second_comma == first_comma + 1 || 
+        second_comma == str.length() - 1) {
         return false;
     }
 
-    try
-    {
-        lat = std::stod(str.substr(0, first_comma));
-        lon = std::stod(str.substr(first_comma + 1, second_comma - first_comma - 1));
-        alt = std::stod(str.substr(second_comma + 1));
+    try {
+        // Extract and validate each component
+        std::string lat_str = str.substr(0, first_comma);
+        std::string lon_str = str.substr(first_comma + 1, second_comma - first_comma - 1);
+        std::string alt_str = str.substr(second_comma + 1);
+        
+        // Check for empty strings after trimming whitespace
+        if (lat_str.empty() || lon_str.empty() || alt_str.empty()) {
+            return false;
+        }
+        
+        lat = std::stod(lat_str);
+        lon = std::stod(lon_str);
+        alt = std::stod(alt_str);
         
         // Validate latitude (-90 to 90)
-        if (lat < -90.0 || lat > 90.0)
+        if (lat < -90.0 || lat > 90.0 || !std::isfinite(lat)) {
             return false;
+        }
             
         // Validate longitude (-180 to 180)
-        if (lon < -180.0 || lon > 180.0)
+        if (lon < -180.0 || lon > 180.0 || !std::isfinite(lon)) {
             return false;
+        }
+        
+        // Validate altitude (reasonable range and finite)
+        if (!std::isfinite(alt) || alt < -11000.0 || alt > 100000.0) {
+            return false;
+        }
             
         return true;
     }
-    catch (const std::exception &e)
-    {
+    catch (const std::exception &e) {
         return false;
     }
 }
