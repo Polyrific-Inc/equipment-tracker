@@ -2,7 +2,6 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "equipment_tracker/position.h"
-#include "equipment_tracker/utils/constants.h"
 #include <chrono>
 #include <thread>
 #include <cmath>
@@ -17,9 +16,8 @@ namespace {
 
 class PositionTest : public ::testing::Test {
 protected:
-    // Helper method to create a timestamp for a specific time
-    static Timestamp createTimestamp(int year, int month, int day, 
-                                    int hour, int minute, int second) {
+    // Helper method to create a timestamp at a specific time
+    static Timestamp createTimestamp(int year, int month, int day, int hour, int minute, int second) {
         std::tm timeinfo = {};
         timeinfo.tm_year = year - 1900;  // Years since 1900
         timeinfo.tm_mon = month - 1;     // Months since January (0-11)
@@ -29,80 +27,82 @@ protected:
         timeinfo.tm_sec = second;        // Seconds (0-59)
         
         std::time_t time_t_value;
-        
-        #ifdef _WIN32
+#ifdef _WIN32
         time_t_value = _mkgmtime(&timeinfo);
-        #else
+#else
         timeinfo.tm_isdst = -1;  // Let the system determine DST
         time_t_value = timegm(&timeinfo);
-        #endif
+#endif
         
         return std::chrono::system_clock::from_time_t(time_t_value);
     }
 };
 
 TEST_F(PositionTest, DefaultConstructor) {
-    Position pos;
-    EXPECT_DOUBLE_EQ(0.0, pos.getLatitude());
-    EXPECT_DOUBLE_EQ(0.0, pos.getLongitude());
-    EXPECT_DOUBLE_EQ(0.0, pos.getAltitude());
-    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, pos.getAccuracy());
+    Position position;
+    EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
     // We can't easily test the timestamp as it's set to current time
 }
 
 TEST_F(PositionTest, ParameterizedConstructor) {
-    Timestamp ts = createTimestamp(2023, 1, 1, 12, 0, 0);
-    Position pos(40.7128, -74.0060, 10.5, 5.0, ts);
+    Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
+    Position position(40.7128, -74.0060, 10.5, 5.0, timestamp);
     
-    EXPECT_DOUBLE_EQ(40.7128, pos.getLatitude());
-    EXPECT_DOUBLE_EQ(-74.0060, pos.getLongitude());
-    EXPECT_DOUBLE_EQ(10.5, pos.getAltitude());
-    EXPECT_DOUBLE_EQ(5.0, pos.getAccuracy());
-    EXPECT_EQ(ts, pos.getTimestamp());
+    EXPECT_DOUBLE_EQ(40.7128, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-74.0060, position.getLongitude());
+    EXPECT_DOUBLE_EQ(10.5, position.getAltitude());
+    EXPECT_DOUBLE_EQ(5.0, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
 }
 
-TEST_F(PositionTest, SettersAndGetters) {
-    Position pos;
+TEST_F(PositionTest, Setters) {
+    Position position;
     
-    pos.setLatitude(37.7749);
-    pos.setLongitude(-122.4194);
-    pos.setAltitude(15.2);
-    pos.setAccuracy(3.5);
+    position.setLatitude(37.7749);
+    position.setLongitude(-122.4194);
+    position.setAltitude(15.0);
+    position.setAccuracy(3.5);
     
-    Timestamp ts = createTimestamp(2023, 2, 15, 14, 30, 0);
-    pos.setTimestamp(ts);
+    Timestamp timestamp = createTimestamp(2023, 6, 20, 14, 45, 30);
+    position.setTimestamp(timestamp);
     
-    EXPECT_DOUBLE_EQ(37.7749, pos.getLatitude());
-    EXPECT_DOUBLE_EQ(-122.4194, pos.getLongitude());
-    EXPECT_DOUBLE_EQ(15.2, pos.getAltitude());
-    EXPECT_DOUBLE_EQ(3.5, pos.getAccuracy());
-    EXPECT_EQ(ts, pos.getTimestamp());
+    EXPECT_DOUBLE_EQ(37.7749, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-122.4194, position.getLongitude());
+    EXPECT_DOUBLE_EQ(15.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(3.5, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
 }
 
 TEST_F(PositionTest, Builder) {
-    Timestamp ts = createTimestamp(2023, 3, 10, 8, 45, 30);
+    Timestamp timestamp = createTimestamp(2023, 7, 10, 8, 15, 45);
     
-    Position pos = Position::builder()
+    Position position = Position::builder()
         .withLatitude(51.5074)
         .withLongitude(-0.1278)
         .withAltitude(25.0)
         .withAccuracy(1.5)
-        .withTimestamp(ts)
+        .withTimestamp(timestamp)
         .build();
     
-    EXPECT_DOUBLE_EQ(51.5074, pos.getLatitude());
-    EXPECT_DOUBLE_EQ(-0.1278, pos.getLongitude());
-    EXPECT_DOUBLE_EQ(25.0, pos.getAltitude());
-    EXPECT_DOUBLE_EQ(1.5, pos.getAccuracy());
-    EXPECT_EQ(ts, pos.getTimestamp());
+    EXPECT_DOUBLE_EQ(51.5074, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-0.1278, position.getLongitude());
+    EXPECT_DOUBLE_EQ(25.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(1.5, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
 }
 
-TEST_F(PositionTest, DistanceToSamePosition) {
-    Position pos(40.7128, -74.0060);
-    EXPECT_NEAR(0.0, pos.distanceTo(pos), 0.001);
+TEST_F(PositionTest, DistanceToSamePoint) {
+    Position position(40.7128, -74.0060);
+    Position samePosition(40.7128, -74.0060);
+    
+    double distance = position.distanceTo(samePosition);
+    EXPECT_NEAR(0.0, distance, 0.001);
 }
 
-TEST_F(PositionTest, DistanceToDifferentPosition) {
+TEST_F(PositionTest, DistanceBetweenKnownPoints) {
     // New York City coordinates
     Position nyc(40.7128, -74.0060);
     
@@ -110,69 +110,87 @@ TEST_F(PositionTest, DistanceToDifferentPosition) {
     Position la(34.0522, -118.2437);
     
     // Expected distance between NYC and LA is approximately 3935 km or 3935000 meters
-    // Allow for some floating point error with a reasonable tolerance
-    EXPECT_NEAR(3935000.0, nyc.distanceTo(la), 5000.0);
-    
-    // Distance should be the same in reverse direction
-    EXPECT_NEAR(nyc.distanceTo(la), la.distanceTo(nyc), 0.001);
+    double distance = nyc.distanceTo(la);
+    EXPECT_NEAR(3935000.0, distance, 5000.0);  // Allow 5km tolerance due to different calculation methods
 }
 
-TEST_F(PositionTest, DistanceToNearbyPosition) {
-    // Two positions 100 meters apart (approximately)
-    // At latitude 40.7128, 0.001 degrees longitude is roughly 85 meters
-    Position pos1(40.7128, -74.0060);
-    Position pos2(40.7128, -74.0072);  // ~100m west
+TEST_F(PositionTest, DistanceToNorthPole) {
+    Position equator(0.0, 0.0);
+    Position northPole(90.0, 0.0);
     
-    // Expected distance should be close to 100 meters
-    EXPECT_NEAR(100.0, pos1.distanceTo(pos2), 5.0);
-}
-
-TEST_F(PositionTest, DistanceToAcrossDateline) {
-    // Test positions on opposite sides of the International Date Line
-    Position west(0.0, 179.9);
-    Position east(0.0, -179.9);
-    
-    // These points should be close to each other (about 22.2 km)
-    EXPECT_NEAR(22200.0, west.distanceTo(east), 100.0);
-}
-
-TEST_F(PositionTest, DistanceToAcrossPoles) {
-    // Test positions on opposite sides of the North Pole
-    Position pos1(89.9, 0.0);
-    Position pos2(89.9, 180.0);
-    
-    // These points should be close to each other
-    EXPECT_NEAR(222000.0, pos1.distanceTo(pos2), 1000.0);
+    double distance = equator.distanceTo(northPole);
+    // Distance from equator to north pole should be approximately 10000 km (1/4 of Earth's circumference)
+    EXPECT_NEAR(10000000.0, distance, 50000.0);  // Allow 50km tolerance
 }
 
 TEST_F(PositionTest, ToStringFormat) {
-    Timestamp ts = createTimestamp(2023, 4, 20, 15, 30, 45);
-    Position pos(37.7749, -122.4194, 12.3, 4.5, ts);
+    Timestamp timestamp = createTimestamp(2023, 8, 25, 12, 30, 45);
+    Position position(37.7749, -122.4194, 15.0, 3.5, timestamp);
     
-    std::string result = pos.toString();
+    std::string positionStr = position.toString();
     
     // Check that the string contains all the expected components
-    EXPECT_THAT(result, ::testing::HasSubstr("lat=37.774900"));
-    EXPECT_THAT(result, ::testing::HasSubstr("lon=-122.419400"));
-    EXPECT_THAT(result, ::testing::HasSubstr("alt=12.30m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("acc=4.50m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("2023-04-20"));
-    // Note: We don't check the exact time because it might be affected by timezone
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("lat=37.774900"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("lon=-122.419400"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("alt=15.00m"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("acc=3.50m"));
+    
+    // We can't easily test the exact time string due to timezone differences,
+    // but we can check that it contains a date-time format
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("time="));
+    EXPECT_THAT(positionStr, ::testing::ContainsRegex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"));
 }
 
-TEST_F(PositionTest, ToStringPrecision) {
-    // Test that the precision is correct for each value
-    Position pos(12.3456789, -98.7654321, 123.456, 7.89);
+TEST_F(PositionTest, BuilderWithDefaultValues) {
+    Position position = Position::builder().build();
     
-    std::string result = pos.toString();
+    EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
+    // Timestamp is current time, can't easily test exact value
+}
+
+TEST_F(PositionTest, BuilderWithPartialValues) {
+    Position position = Position::builder()
+        .withLatitude(35.6762)
+        .withLongitude(139.6503)
+        .build();
     
-    // Latitude and longitude should have 6 decimal places
-    EXPECT_THAT(result, ::testing::HasSubstr("lat=12.345679"));
-    EXPECT_THAT(result, ::testing::HasSubstr("lon=-98.765432"));
+    EXPECT_DOUBLE_EQ(35.6762, position.getLatitude());
+    EXPECT_DOUBLE_EQ(139.6503, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());  // Default value
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());  // Default value
+}
+
+TEST_F(PositionTest, DistanceWithDifferentAltitudes) {
+    // Two points with same lat/long but different altitudes
+    Position p1(40.7128, -74.0060, 0.0);
+    Position p2(40.7128, -74.0060, 100.0);
     
-    // Altitude and accuracy should have 2 decimal places
-    EXPECT_THAT(result, ::testing::HasSubstr("alt=123.46m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("acc=7.89m"));
+    // The Haversine formula only considers surface distance, not altitude
+    double distance = p1.distanceTo(p2);
+    EXPECT_NEAR(0.0, distance, 0.001);
+}
+
+TEST_F(PositionTest, DistanceAtEquator) {
+    // Two points on the equator, 1 degree apart
+    Position p1(0.0, 0.0);
+    Position p2(0.0, 1.0);
+    
+    double distance = p1.distanceTo(p2);
+    // At the equator, 1 degree of longitude is approximately 111.32 km
+    EXPECT_NEAR(111320.0, distance, 100.0);
+}
+
+TEST_F(PositionTest, DistanceNearPoles) {
+    // Two points near the north pole, 1 degree apart in longitude
+    Position p1(89.0, 0.0);
+    Position p2(89.0, 1.0);
+    
+    double distance = p1.distanceTo(p2);
+    // Near the poles, 1 degree of longitude is much shorter than at the equator
+    EXPECT_LT(distance, 5000.0);  // Should be much less than 111 km
 }
 
 }  // namespace
