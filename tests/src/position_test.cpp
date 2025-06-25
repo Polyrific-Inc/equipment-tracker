@@ -1,17 +1,10 @@
 // <test_code>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include <cmath>
-#include <sstream>
-#include <iomanip>
-#include <chrono>
 #include "equipment_tracker/position.h"
-#include "equipment_tracker/utils/constants.h"
-
-// Mock the constants if needed
-#ifndef EARTH_RADIUS_METERS
-#define EARTH_RADIUS_METERS 6371000.0
-#endif
+#include <chrono>
+#include <thread>
+#include <cmath>
 
 // Define M_PI if not available
 #ifndef M_PI
@@ -19,157 +12,187 @@
 #endif
 
 namespace equipment_tracker {
+namespace {
 
 class PositionTest : public ::testing::Test {
 protected:
-    // Common test setup
-    void SetUp() override {
-        // Current time for testing
-        now_ = std::chrono::system_clock::now();
+    // Helper method to create a timestamp at a specific time
+    static Timestamp createTimestamp(int year, int month, int day, int hour, int minute, int second) {
+        std::tm timeinfo = {};
+        timeinfo.tm_year = year - 1900;  // Years since 1900
+        timeinfo.tm_mon = month - 1;     // Months since January (0-11)
+        timeinfo.tm_mday = day;          // Day of the month (1-31)
+        timeinfo.tm_hour = hour;         // Hours (0-23)
+        timeinfo.tm_min = minute;        // Minutes (0-59)
+        timeinfo.tm_sec = second;        // Seconds (0-59)
+        
+        std::time_t time_t_value;
+#ifdef _WIN32
+        time_t_value = _mkgmtime(&timeinfo);
+#else
+        timeinfo.tm_isdst = -1;  // Let the system determine DST
+        time_t_value = timegm(&timeinfo);
+#endif
+        
+        return std::chrono::system_clock::from_time_t(time_t_value);
     }
-
-    std::chrono::system_clock::time_point now_;
 };
 
-TEST_F(PositionTest, ConstructorSetsAllFields) {
-    // Arrange
-    double latitude = 37.7749;
-    double longitude = -122.4194;
-    double altitude = 10.5;
-    double accuracy = 5.2;
-    
-    // Act
-    Position position(latitude, longitude, altitude, accuracy, now_);
-    
-    // Assert
-    EXPECT_DOUBLE_EQ(latitude, position.getLatitude());
-    EXPECT_DOUBLE_EQ(longitude, position.getLongitude());
-    EXPECT_DOUBLE_EQ(altitude, position.getAltitude());
-    EXPECT_DOUBLE_EQ(accuracy, position.getAccuracy());
-    EXPECT_EQ(now_, position.getTimestamp());
+TEST_F(PositionTest, DefaultConstructor) {
+    Position position;
+    EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
+    // We can't easily test the timestamp as it's set to current time
 }
 
-TEST_F(PositionTest, DistanceToSamePosition) {
-    // Arrange
-    Position position(37.7749, -122.4194, 10.0, 5.0, now_);
+TEST_F(PositionTest, ParameterizedConstructor) {
+    Timestamp timestamp = createTimestamp(2023, 5, 15, 10, 30, 0);
+    Position position(40.7128, -74.0060, 10.5, 5.0, timestamp);
     
-    // Act
-    double distance = position.distanceTo(position);
+    EXPECT_DOUBLE_EQ(40.7128, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-74.0060, position.getLongitude());
+    EXPECT_DOUBLE_EQ(10.5, position.getAltitude());
+    EXPECT_DOUBLE_EQ(5.0, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
+}
+
+TEST_F(PositionTest, Setters) {
+    Position position;
     
-    // Assert
+    position.setLatitude(37.7749);
+    position.setLongitude(-122.4194);
+    position.setAltitude(15.0);
+    position.setAccuracy(3.5);
+    
+    Timestamp timestamp = createTimestamp(2023, 6, 20, 14, 45, 30);
+    position.setTimestamp(timestamp);
+    
+    EXPECT_DOUBLE_EQ(37.7749, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-122.4194, position.getLongitude());
+    EXPECT_DOUBLE_EQ(15.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(3.5, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
+}
+
+TEST_F(PositionTest, Builder) {
+    Timestamp timestamp = createTimestamp(2023, 7, 10, 8, 15, 45);
+    
+    Position position = Position::builder()
+        .withLatitude(51.5074)
+        .withLongitude(-0.1278)
+        .withAltitude(25.0)
+        .withAccuracy(1.5)
+        .withTimestamp(timestamp)
+        .build();
+    
+    EXPECT_DOUBLE_EQ(51.5074, position.getLatitude());
+    EXPECT_DOUBLE_EQ(-0.1278, position.getLongitude());
+    EXPECT_DOUBLE_EQ(25.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(1.5, position.getAccuracy());
+    EXPECT_EQ(timestamp, position.getTimestamp());
+}
+
+TEST_F(PositionTest, DistanceToSamePoint) {
+    Position position(40.7128, -74.0060);
+    Position samePosition(40.7128, -74.0060);
+    
+    double distance = position.distanceTo(samePosition);
     EXPECT_NEAR(0.0, distance, 0.001);
 }
 
-TEST_F(PositionTest, DistanceToDifferentPosition) {
-    // Arrange
-    Position sf(37.7749, -122.4194, 10.0, 5.0, now_); // San Francisco
-    Position ny(40.7128, -74.0060, 10.0, 5.0, now_);  // New York
+TEST_F(PositionTest, DistanceBetweenKnownPoints) {
+    // New York City coordinates
+    Position nyc(40.7128, -74.0060);
     
-    // Expected distance between SF and NY is approximately 4130 km
-    double expected_distance_meters = 4130000.0;
+    // Los Angeles coordinates
+    Position la(34.0522, -118.2437);
     
-    // Act
-    double distance = sf.distanceTo(ny);
-    
-    // Assert - allow for some variation due to floating point precision
-    EXPECT_NEAR(expected_distance_meters, distance, expected_distance_meters * 0.05);
+    // Expected distance between NYC and LA is approximately 3935 km or 3935000 meters
+    double distance = nyc.distanceTo(la);
+    EXPECT_NEAR(3935000.0, distance, 5000.0);  // Allow 5km tolerance due to different calculation methods
 }
 
-TEST_F(PositionTest, DistanceToNearbyPosition) {
-    // Arrange - two positions 100m apart (approximately)
-    Position pos1(37.7749, -122.4194, 10.0, 5.0, now_);
-    // Move approximately 100m north
-    Position pos2(37.7758, -122.4194, 10.0, 5.0, now_);
+TEST_F(PositionTest, DistanceToNorthPole) {
+    Position equator(0.0, 0.0);
+    Position northPole(90.0, 0.0);
     
-    // Act
-    double distance = pos1.distanceTo(pos2);
-    
-    // Assert - allow for some variation
-    EXPECT_NEAR(100.0, distance, 5.0);
+    double distance = equator.distanceTo(northPole);
+    // Distance from equator to north pole should be approximately 10000 km (1/4 of Earth's circumference)
+    EXPECT_NEAR(10000000.0, distance, 50000.0);  // Allow 50km tolerance
 }
 
-TEST_F(PositionTest, DistanceToAntipodes) {
-    // Arrange - antipodal points (opposite sides of Earth)
-    Position pos1(0.0, 0.0, 0.0, 5.0, now_);        // Point on equator at Greenwich
-    Position pos2(0.0, 180.0, 0.0, 5.0, now_);      // Opposite side of Earth
+TEST_F(PositionTest, ToStringFormat) {
+    Timestamp timestamp = createTimestamp(2023, 8, 25, 12, 30, 45);
+    Position position(37.7749, -122.4194, 15.0, 3.5, timestamp);
     
-    // Expected distance is half the circumference of Earth
-    double expected_distance = M_PI * EARTH_RADIUS_METERS;
+    std::string positionStr = position.toString();
     
-    // Act
-    double distance = pos1.distanceTo(pos2);
+    // Check that the string contains all the expected components
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("lat=37.774900"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("lon=-122.419400"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("alt=15.00m"));
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("acc=3.50m"));
     
-    // Assert
-    EXPECT_NEAR(expected_distance, distance, 1.0);
+    // We can't easily test the exact time string due to timezone differences,
+    // but we can check that it contains a date-time format
+    EXPECT_THAT(positionStr, ::testing::HasSubstr("time="));
+    EXPECT_THAT(positionStr, ::testing::ContainsRegex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}"));
 }
 
-TEST_F(PositionTest, ToStringFormatsCorrectly) {
-    // Arrange
-    Position position(37.7749, -122.4194, 10.5, 5.2, now_);
+TEST_F(PositionTest, BuilderWithDefaultValues) {
+    Position position = Position::builder().build();
     
-    // Act
-    std::string result = position.toString();
-    
-    // Assert - check that the string contains expected substrings
-    EXPECT_THAT(result, ::testing::HasSubstr("lat=37.774900"));
-    EXPECT_THAT(result, ::testing::HasSubstr("lon=-122.419400"));
-    EXPECT_THAT(result, ::testing::HasSubstr("alt=10.50m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("acc=5.20m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("time="));
+    EXPECT_DOUBLE_EQ(0.0, position.getLatitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());
+    // Timestamp is current time, can't easily test exact value
 }
 
-TEST_F(PositionTest, ToStringHandlesZeroValues) {
-    // Arrange
-    Position position(0.0, 0.0, 0.0, 0.0, now_);
+TEST_F(PositionTest, BuilderWithPartialValues) {
+    Position position = Position::builder()
+        .withLatitude(35.6762)
+        .withLongitude(139.6503)
+        .build();
     
-    // Act
-    std::string result = position.toString();
-    
-    // Assert
-    EXPECT_THAT(result, ::testing::HasSubstr("lat=0.000000"));
-    EXPECT_THAT(result, ::testing::HasSubstr("lon=0.000000"));
-    EXPECT_THAT(result, ::testing::HasSubstr("alt=0.00m"));
-    EXPECT_THAT(result, ::testing::HasSubstr("acc=0.00m"));
+    EXPECT_DOUBLE_EQ(35.6762, position.getLatitude());
+    EXPECT_DOUBLE_EQ(139.6503, position.getLongitude());
+    EXPECT_DOUBLE_EQ(0.0, position.getAltitude());  // Default value
+    EXPECT_DOUBLE_EQ(DEFAULT_POSITION_ACCURACY, position.getAccuracy());  // Default value
 }
 
-TEST_F(PositionTest, ToStringHandlesNegativeValues) {
-    // Arrange
-    Position position(-37.7749, -122.4194, -10.5, 5.2, now_);
+TEST_F(PositionTest, DistanceWithDifferentAltitudes) {
+    // Two points with same lat/long but different altitudes
+    Position p1(40.7128, -74.0060, 0.0);
+    Position p2(40.7128, -74.0060, 100.0);
     
-    // Act
-    std::string result = position.toString();
-    
-    // Assert
-    EXPECT_THAT(result, ::testing::HasSubstr("lat=-37.774900"));
-    EXPECT_THAT(result, ::testing::HasSubstr("lon=-122.419400"));
-    EXPECT_THAT(result, ::testing::HasSubstr("alt=-10.50m"));
+    // The Haversine formula only considers surface distance, not altitude
+    double distance = p1.distanceTo(p2);
+    EXPECT_NEAR(0.0, distance, 0.001);
 }
 
-TEST_F(PositionTest, DistanceToHandlesEdgeCases) {
-    // Arrange
-    Position north_pole(90.0, 0.0, 0.0, 0.0, now_);
-    Position south_pole(-90.0, 0.0, 0.0, 0.0, now_);
+TEST_F(PositionTest, DistanceAtEquator) {
+    // Two points on the equator, 1 degree apart
+    Position p1(0.0, 0.0);
+    Position p2(0.0, 1.0);
     
-    // Act
-    double distance = north_pole.distanceTo(south_pole);
-    
-    // Assert - distance should be approximately Earth's circumference / 2
-    EXPECT_NEAR(M_PI * EARTH_RADIUS_METERS, distance, 1.0);
+    double distance = p1.distanceTo(p2);
+    // At the equator, 1 degree of longitude is approximately 111.32 km
+    EXPECT_NEAR(111320.0, distance, 100.0);
 }
 
-TEST_F(PositionTest, DistanceToHandlesSmallDistances) {
-    // Arrange - two positions very close to each other
-    Position pos1(37.7749, -122.4194, 10.0, 5.0, now_);
-    // Move approximately 1m east
-    Position pos2(37.7749, -122.41939, 10.0, 5.0, now_);
+TEST_F(PositionTest, DistanceNearPoles) {
+    // Two points near the north pole, 1 degree apart in longitude
+    Position p1(89.0, 0.0);
+    Position p2(89.0, 1.0);
     
-    // Act
-    double distance = pos1.distanceTo(pos2);
-    
-    // Assert - distance should be very small
-    EXPECT_LT(distance, 2.0);  // Less than 2 meters
-    EXPECT_GT(distance, 0.0);  // Greater than 0 meters
+    double distance = p1.distanceTo(p2);
+    // Near the poles, 1 degree of longitude is much shorter than at the equator
+    EXPECT_LT(distance, 5000.0);  // Should be much less than 111 km
 }
 
-} // namespace equipment_tracker
+}  // namespace
+}  // namespace equipment_tracker
 // </test_code>
