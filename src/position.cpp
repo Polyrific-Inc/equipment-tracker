@@ -72,4 +72,42 @@ namespace equipment_tracker
         return ss.str();
     }
 
+/**
+ * Calculates the bearing between two geographic coordinates
+ * @param {number} lat1 - Latitude of first point in degrees
+ * @param {number} lon1 - Longitude of first point in degrees
+ * @param {number} lat2 - Latitude of second point in degrees
+ * @param {number} lon2 - Longitude of second point in degrees
+ * @returns {number} Bearing in degrees (0-360)
+ */
+function calculateBearing(lat1, lon1, lat2, lon2) {
+    // Convert to radians
+    const lat1Rad = lat1 * Math.PI / 180.0;
+    const lon1Rad = lon1 * Math.PI / 180.0;
+    const lat2Rad = lat2 * Math.PI / 180.0;
+    const lon2Rad = lon2 * Math.PI / 180.0;
+
+    // Calculate bearing
+    const y = Math.sin(lon2Rad - lon1Rad) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+        Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(lon2Rad - lon1Rad);
+    let bearing = Math.atan2(y, x);
+
+    // Convert to degrees
+    bearing = bearing * 180.0 / Math.PI;
+
+    // Normalize to 0-360
+    bearing = ((bearing + 360) % 360);
+
+    return bearing;
+}
+
+// Example usage:
+// const bearing = calculateBearing(40.7128, -74.0060, 34.0522, -118.2437);
+// console.log(`Bearing: ${bearing}°`);
+
+module.exports = {
+    calculateBearing
+}; 
+
 } // namespace equipment_tracker
