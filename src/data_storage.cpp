@@ -9,12 +9,19 @@
 
 namespace equipment_tracker
 {
+    // Helper function to get current timestamp (replaces missing time_utils.h)
+    Timestamp getCurrentTimestampHelper()
+    {
+        return std::chrono::system_clock::now();
+    }
 
-    // For simplicity, this implementation uses a file-based storage
-    // A real implementation would use SQLite or another database
-
-    DataStorage::DataStorage(const std::string &db_path)
-        : db_path_(db_path), is_initialized_(false)
+    // Implementation
+    DataStorage::DataStorage(const std::string &db_path,
+                             size_t equipment_cache_size,
+                             size_t position_cache_size)
+        : db_path_(db_path),
+          equipment_cache_(equipment_cache_size, std::chrono::seconds(600)), // 10 min TTL
+          position_cache_(position_cache_size, std::chrono::seconds(300))    // 5 min TTL
     {
     }
 
@@ -101,6 +108,10 @@ namespace equipment_tracker
             }
 
             file.close();
+
+            // Update cache
+            equipment_cache_.put(equipment.getId(), equipment);
+
             return true;
         }
         catch (const std::exception &e)
@@ -112,8 +123,26 @@ namespace equipment_tracker
 
     std::optional<Equipment> DataStorage::loadEquipment(const EquipmentId &id)
     {
+        // Try cache first (no lock needed, cache is thread-safe)
+        auto cached = equipment_cache_.get(id);
+        if (cached)
+        {
+            equipment_cache_hits_++;
+            return *cached;
+        }
+
+        equipment_cache_misses_++;
+
         std::lock_guard<std::mutex> lock(mutex_);
-        return loadEquipmentInternal(id);
+        auto equipment = loadEquipmentInternal(id);
+
+        if (equipment)
+        {
+            // Cache the result
+            equipment_cache_.put(id, *equipment);
+        }
+
+        return equipment;
     }
 
     std::optional<Equipment> DataStorage::loadEquipmentInternal(const EquipmentId &id)
@@ -224,8 +253,12 @@ namespace equipment_tracker
 
     bool DataStorage::updateEquipment(const Equipment &equipment)
     {
-        // For this simple implementation, save and update are the same
-        return saveEquipment(equipment);
+        bool success = saveEquipment(equipment);
+        if (success)
+        {
+            // Cache is already updated in saveEquipment
+        }
+        return success;
     }
 
     bool DataStorage::deleteEquipment(const EquipmentId &id)
@@ -252,6 +285,9 @@ namespace equipment_tracker
             {
                 std::filesystem::remove_all(history_dir);
             }
+
+            // Remove from cache
+            equipment_cache_.invalidate(id);
 
             return true;
         }
@@ -307,6 +343,10 @@ namespace equipment_tracker
             file << "timestamp=" << timestamp << std::endl;
 
             file.close();
+
+            // Invalidate related equipment cache since position changed
+            equipment_cache_.invalidate(id);
+
             return true;
         }
         catch (const std::exception &e)
@@ -321,8 +361,52 @@ namespace equipment_tracker
         const Timestamp &start,
         const Timestamp &end)
     {
+        // Validate input parameters
+        if (id.empty())
+        {
+            return std::vector<Position>();
+        }
+
+        // Handle default timestamp values with proper validation
+        Timestamp actual_start = start;
+        Timestamp actual_end = end;
+
+        if (start == Timestamp{})
+        {
+            actual_start = std::chrono::system_clock::time_point::min();
+        }
+        if (end == Timestamp{})
+        {
+            actual_end = getCurrentTimestampHelper();
+        }
+
+        // Validate time range
+        if (actual_start > actual_end)
+        {
+            return std::vector<Position>();
+        }
+
+        // Try cache first
+        PositionQueryKey key{id, actual_start, actual_end};
+        auto cached = position_cache_.get(key);
+        if (cached)
+        {
+            position_cache_hits_++;
+            return *cached;
+        }
+
+        position_cache_misses_++;
+
         std::lock_guard<std::mutex> lock(mutex_);
-        return getPositionHistoryInternal(id, start, end);
+        auto positions = getPositionHistoryInternal(id, actual_start, actual_end);
+
+        // Only cache non-empty results to avoid caching temporary failures
+        if (!positions.empty())
+        {
+            position_cache_.put(key, positions);
+        }
+
+        return positions;
     }
 
     std::vector<Position> DataStorage::getPositionHistoryInternal(
@@ -375,7 +459,7 @@ namespace equipment_tracker
                     std::string timestamp_str = filename.substr(0, dot_pos);
                     time_t timestamp = std::stoull(timestamp_str);
 
-                    // Check if within time range
+                    // Check if within time range - fixed to be inclusive on both ends
                     if (timestamp >= start_time && timestamp <= end_time)
                     {
                         // Load position from file
@@ -468,11 +552,22 @@ namespace equipment_tracker
                     {
                         std::string id = filename.substr(0, dot_pos);
 
-                        // Load equipment (call internal version without locking)
-                        auto equipment = loadEquipmentInternal(id);
-                        if (equipment)
+                        // Try cache first
+                        auto cached = equipment_cache_.get(id);
+                        if (cached)
                         {
-                            result.push_back(std::move(*equipment));
+                            result.push_back(*cached);
+                        }
+                        else
+                        {
+                            // Load equipment (call internal version without locking)
+                            auto equipment = loadEquipmentInternal(id);
+                            if (equipment)
+                            {
+                                // Cache the loaded equipment
+                                equipment_cache_.put(id, *equipment);
+                                result.push_back(std::move(*equipment));
+                            }
                         }
                     }
                 }
@@ -495,7 +590,7 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by status
-        for (auto& equipment : all_equipment)
+        for (auto &equipment : all_equipment)
         {
             if (equipment.getStatus() == status)
             {
@@ -514,7 +609,7 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by type
-        for (auto& equipment : all_equipment)
+        for (auto &equipment : all_equipment)
         {
             if (equipment.getType() == type)
             {
@@ -535,7 +630,7 @@ namespace equipment_tracker
         auto all_equipment = getAllEquipment();
 
         // Filter by area
-        for (auto& equipment : all_equipment)
+        for (auto &equipment : all_equipment)
         {
             auto position = equipment.getLastPosition();
 
@@ -556,12 +651,62 @@ namespace equipment_tracker
         return result;
     }
 
+    void DataStorage::clearCache()
+    {
+        equipment_cache_.clear();
+        position_cache_.clear();
+    }
+
+    void DataStorage::clearEquipmentCache()
+    {
+        equipment_cache_.clear();
+    }
+
+    void DataStorage::clearPositionCache()
+    {
+        position_cache_.clear();
+    }
+
+    DataStorage::CacheStats DataStorage::getCacheStats() const
+    {
+        CacheStats stats;
+        stats.equipment_hits = equipment_cache_hits_.load();
+        stats.equipment_misses = equipment_cache_misses_.load();
+        stats.position_hits = position_cache_hits_.load();
+        stats.position_misses = position_cache_misses_.load();
+        stats.equipment_cache_size = equipment_cache_.size();
+        stats.position_cache_size = position_cache_.size();
+
+        size_t total_equipment = stats.equipment_hits + stats.equipment_misses;
+        size_t total_position = stats.position_hits + stats.position_misses;
+
+        stats.equipment_hit_rate = total_equipment > 0 ? static_cast<double>(stats.equipment_hits) / total_equipment : 0.0;
+        stats.position_hit_rate = total_position > 0 ? static_cast<double>(stats.position_hits) / total_position : 0.0;
+
+        return stats;
+    }
+
+    void DataStorage::resetCacheStats()
+    {
+        equipment_cache_hits_ = 0;
+        equipment_cache_misses_ = 0;
+        position_cache_hits_ = 0;
+        position_cache_misses_ = 0;
+    }
+
     void DataStorage::initDatabase()
     {
         // Create database directory structure
         std::filesystem::create_directory(db_path_);
         std::filesystem::create_directory(db_path_ + "/equipment");
         std::filesystem::create_directory(db_path_ + "/positions");
+    }
+
+    void DataStorage::prepareStatements()
+    {
+        // Placeholder for SQL statement preparation
+        // In a real implementation, this would prepare SQL statements
+        // for improved performance
     }
 
     bool DataStorage::executeQuery(const std::string &query)
