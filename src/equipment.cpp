@@ -1,4 +1,5 @@
 #include <sstream>
+#include <iostream>
 #include <chrono>
 #include <cmath>
 #include "equipment_tracker/equipment.h"
@@ -229,6 +230,11 @@ namespace equipment_tracker
         ss << ")";
 
         return ss.str();
+    }
+
+    void Equipment::printHelloWorld() const
+    {
+        std::cout << "Hello World from Equipment " << name_ << "!" << std::endl;
     }
 
 } // namespace equipment_tracker
