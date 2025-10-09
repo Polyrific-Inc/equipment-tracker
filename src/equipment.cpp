@@ -109,13 +109,13 @@ namespace equipment_tracker
             return;
         }
 
+        std::lock_guard<std::mutex> lock(mutex_);
+
         // Raymond safety check: Validate equipment is in safe operating state
         if (status_ == EquipmentStatus::Maintenance || status_ == EquipmentStatus::Error) {
             spdlog::warn("Position update rejected for equipment {} in unsafe state: {}", name_, static_cast<int>(status_));
             return;
         }
-
-        std::lock_guard<std::mutex> lock(mutex_);
 
         try {
             // Check if position represents valid movement
