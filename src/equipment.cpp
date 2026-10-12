@@ -127,8 +127,12 @@ namespace equipment_tracker
             position_history_.erase(position_history_.begin());
         }
 
-        // Update status to active when position is recorded
-        status_ = EquipmentStatus::Active;
+        // Update status to active when position is recorded, but keep an
+        // operator-set Maintenance status (ET-1)
+        if (status_ != EquipmentStatus::Maintenance)
+        {
+            status_ = EquipmentStatus::Active;
+        }
     }
 
     std::vector<Position> Equipment::getPositionHistory() const
