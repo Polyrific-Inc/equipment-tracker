@@ -48,6 +48,7 @@ namespace equipment_tracker
         // Utility methods
         bool isMoving() const;
         std::string toString() const;
+        void printHelloWorld() const;
 
     private:
         EquipmentId id_;
