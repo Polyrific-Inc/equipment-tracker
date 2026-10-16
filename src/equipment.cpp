@@ -15,6 +15,17 @@ namespace equipment_tracker
     {
     }
 
+    Equipment::Equipment(EquipmentId id, EquipmentType type, std::string name, size_t max_history_size)
+        : id_(std::move(id)),
+          type_(type),
+          name_(std::move(name)),
+          status_(EquipmentStatus::Inactive),
+          max_history_size_(max_history_size)
+    {
+        // Pre-allocate position history to avoid reallocations
+        position_history_.reserve(max_history_size_);
+    }
+
     Equipment::Equipment(Equipment &&other) noexcept
         : id_(std::move(other.id_)),
           type_(other.type_),
